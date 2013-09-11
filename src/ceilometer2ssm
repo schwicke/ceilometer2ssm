@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python
 import httplib
 import urllib
 import json
@@ -60,7 +60,7 @@ def read_config(filename):
         exit(1)
         
 
-def auth_keystone(keystoneserver, username, password, tenant ):
+def auth_keystone(keystoneserver, username, password, tenant, cacert ):
     auth='{"auth":{"passwordCredentials":{"username":"'+username+'","password":"'+password+'"}, "tenantName":"'+tenant+'"}}'
     buf = cStringIO.StringIO()
 
@@ -69,7 +69,7 @@ def auth_keystone(keystoneserver, username, password, tenant ):
     c.setopt(c.FOLLOWLOCATION, 1)
     c.setopt(c.MAXREDIRS, 5)
     c.setopt(c.WRITEFUNCTION, buf.write)
-    c.setopt(c.CAINFO,'/etc/pki/tls/certs/CERN-bundle.pem')
+    c.setopt(c.CAINFO,cacert)
     c.setopt(c.HTTPHEADER, ['Accept: application/json', 'Content-Type: application/json'])
     c.setopt(c.POSTFIELDS, auth)
     try:
@@ -313,7 +313,8 @@ parser.add_argument('-p', '--publish', dest='publish', action='store_true', help
 parser.add_argument('-v', '--verbose', dest='verbose', action='store_true', help='print the result to the screen',default=False)
 parser.add_argument('-s', '--start', dest='start', action='store',help='start time for the publication',default="2013-08-12T00:00:00")
 parser.add_argument('-e', '--end', dest='end', action='store', help='end time for the publicatin',default="2013-08-12T23:59:59")
-parser.add_argument('-c', '--config', dest='configfile', action='store', help='configuration file location',default="/etc/ceilometer2ssm.conf")
+parser.add_argument('-c', '--config', dest='configfile', action='store', help='ceilometer2ssm configuration file location',default="/etc/ceilometer2ssm.conf")
+parser.add_arguemnt('-a', '--apelssmconfig',dest='apelssmconf',action='store', help='location of the apel-ssm configuration file', default='/etc/apel/sender.cfg')
 
 args = parser.parse_args()
 start =  args.start
@@ -321,6 +322,7 @@ end = args.end
 publish = args.publish
 verbose = args.verbose
 configfile = args.configfile
+apelssmconf = args.apelssmconf
 
 if (verbose) :
     print   >> sys.stderr, "Verbose output will be created"
@@ -379,10 +381,19 @@ except:
         print  >> sys.stderr, "ERROR: OS_TENANT_NAME is not set"
         exit(1)
 
+try:
+    os_cacert=secrets["os_cacert"]
+except:
+    try:
+        os_tenant_name=os.environ['OS_CACERT']
+    except KeyError:
+        print  >> sys.stderr, "ERROR: OS_CACERT is not set"
+        exit(1)
+
 if (verbose):
     print  >> sys.stderr, "Getting authentication token from keystone"
 
-keystone_response = auth_keystone(os_auth_url+'/tokens',os_username,os_password,os_tenant_name)
+keystone_response = auth_keystone(os_auth_url+'/tokens',os_username,os_password,os_tenant_name,os_cacert)
 
 #
 cpu_used = receive_data(keystone_response,start,end,'cpu')
@@ -400,7 +411,7 @@ if (verbose):
 if (publish):
     dirq = QueueSimple('/var/spool/apel/outgoing/')
     dirq.add(records)
-    command_line="/usr/bin/ssmsend --config /etc/apel/sender.cfg"
+    command_line="/usr/bin/ssmsend --config " + apelssmconf
     args = shlex.split(command_line)
     try:
         p = subprocess.Popen(args)
