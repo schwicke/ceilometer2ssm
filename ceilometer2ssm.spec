@@ -1,6 +1,6 @@
 Summary: ceilomter to SSM2 interface
 Name: ceilometer2ssm
-Version: 0.0.2
+Version: 0.0.4
 Release: 1%{?dist}
 License: ASL2
 Group: PES
@@ -43,7 +43,14 @@ rm -rf $RPM_BUILD_ROOT
 %preun
 
 %changelog
-* Wed Sep 11 2013 Ulrich Schwickerath <Ulrich.Schwickerath@cern.ch> -0.0.1-1
+
+* Wed Sep 11 2013 Ulrich Schwickerath <Ulrich.Schwickerath@cern.ch> -0.0.4-1
+- APEL-cloud-message should appear only once 
+
+* Wed Sep 11 2013 Ulrich Schwickerath <Ulrich.Schwickerath@cern.ch> -0.0.3-1
+- fix state
+
+* Wed Sep 11 2013 Ulrich Schwickerath <Ulrich.Schwickerath@cern.ch> -0.0.2-1
 - omit fields if the values are not defined instead or reporting NULL
 - more verbose output for debugging
 - fix output format

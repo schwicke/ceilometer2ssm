@@ -269,30 +269,35 @@ def ana_received_net_data(mapping,report_groups,net_data,hide_names):
                 ssm_end[resource_id][counter_name]['counter_value'] = netcount
                 
 def PrintSSMRecords(sitename, verbose):
-    line = ""
+    line = "APEL-cloud-message: %s\n" % "v0.2"
     for resource_id in ssm_end.keys():
         if ssm_end[resource_id]:
-            line += "APEL-cloud-message: %s\n" % "v0.2"
             line += "VMUUID: %s\n" % ssm_end[resource_id]['vmuuid']
             line += "SiteName: %s\n" % sitename
             line += "MachineName: %s\n" % ssm_end[resource_id]['machinename']
             line += "LocalUserId: %s\n" % str(ssm_end[resource_id]['uid'])
             line += "LocalGroupId: %s\n" % str(ssm_end[resource_id]['gid'])
-            line += "Status: %s\n" % ssm_end[resource_id]['state']
+            if (ssm_end[resource_id]['state'] == "running"):
+                line += "Status: %s\n" % "NULL"
+            else:
+                line += "Status: %s\n" % ssm_end[resource_id]['state']
             try:
                 line += "StartTime: %d\n" % int(ssm_end[resource_id]['starttime'])
             except:
+                line += "StartTime: %d\n" % 0
                 if (verbose):
                     print >> sys.stderr,"INFO: starttime is not set. Skipping"
             try:
-                line += "EndTime: %s\n" % int(ssm_end[resource_id]['endtime'])
+                line += "EndTime: %d\n" % int(ssm_end[resource_id]['endtime'])
             except:
+                line += "EndTime: %d\n" % 0
                 if (verbose):
                     print >> sys.stderr,"INFO: endtime is not set. Skipping"
             line += "CpuDuration: %d\n" % int(0.5+float(ssm_end[resource_id]['cpucount'])/1000000000.0)
             try:
                 line += "CpuCount: %d\n" %  int(ssm_end[resource_id]['vcpu'])
             except:
+                line += "CpuCount: %d\n" %  0
                 if (verbose):
                     print >> sys.stderr, "INFO: cannot get cpu count. Skipping"
                     print >> sys.stderr, ssm_end[resource_id]['vcpu']
