@@ -65,13 +65,13 @@ def auth_keystone(keystoneserver, username, password, tenant, cacert ):
     buf = cStringIO.StringIO()
 
     c = pycurl.Curl()
-    c.setopt(c.URL, keystoneserver)
+    c.setopt(c.URL, keystoneserver.encode('ascii','ignore'))
     c.setopt(c.FOLLOWLOCATION, 1)
     c.setopt(c.MAXREDIRS, 5)
     c.setopt(c.WRITEFUNCTION, buf.write)
-    c.setopt(c.CAINFO,cacert)
+    c.setopt(c.CAINFO,cacert.encode('ascii','ignore'))
     c.setopt(c.HTTPHEADER, ['Accept: application/json', 'Content-Type: application/json'])
-    c.setopt(c.POSTFIELDS, auth)
+    c.setopt(c.POSTFIELDS, auth.encode('ascii','ignore'))
     try:
         c.perform()
         answer=buf.getvalue()

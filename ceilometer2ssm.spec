@@ -44,8 +44,9 @@ rm -rf $RPM_BUILD_ROOT
 
 %changelog
 
-* Wed Sep 11 2013 Ulrich Schwickerath <Ulrich.Schwickerath@cern.ch> -0.0.4-1
+* Wed Sep 11 2013 Ulrich Schwickerath <Ulrich.Schwickerath@cern.ch> -0.0.5-1
 - APEL-cloud-message should appear only once 
+- convert stuff read from config to ascii from unicode
 
 * Wed Sep 11 2013 Ulrich Schwickerath <Ulrich.Schwickerath@cern.ch> -0.0.3-1
 - fix state
