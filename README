@@ -1,0 +1,5 @@
+This package contains an interface which queries ceilometer and creates ssm accounting records from it. 
+Optionally, these can be directly uploaded to APEL.
+
+
+

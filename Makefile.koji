@@ -1,0 +1,12 @@
+PKGNAME=ceilometer2ssm
+PKGID=$(PKGNAME)
+TARFILE=$(PKGID).tar.gz
+
+all:
+	mkdir $(PKGID)
+	ls | grep -v -E '$(PKGID)$$|\.git' | xargs cp -rt $(PKGID)
+	tar cvzf $(TARFILE) $(PKGID)
+	rm -r $(PKGID)
+
+clean:
+	rm $(TARFILE)

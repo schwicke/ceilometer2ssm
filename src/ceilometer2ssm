@@ -1,0 +1,411 @@
+#!/usr/bin/python
+import httplib
+import urllib
+import json
+import pycurl
+import cStringIO
+import re
+import os
+import sys
+from pwd import getpwnam  
+import time
+from dateutil import parser
+import urlparse
+from dirq.QueueSimple import QueueSimple
+import argparse
+import subprocess
+import shlex
+
+ssm_start={}
+ssm_end={}
+
+state_map = {
+    # from https://wiki.egi.eu/wiki/Fedcloud-tf:WorkGroups:Scenario4
+    "active": "started",
+    "build": "started", 
+    "deleted": "completed", 
+    "error": "error",
+    "hard_reboot": "started", 
+    "migrating": "started", 
+    "paused": "paused", 
+    "reboot": "started",
+    "rebuild": "started", 
+    "confirming_resize": "started",
+    "rescue": "started",
+    "resize": "started",
+    "revert_resize": "started",
+    "password": "started",
+    "verify_resize": "started",
+    "shutoff": "completed",
+    "suspended": "suspended",
+    "terminated": "completed",
+    "stopped": "completed",
+    "saving": "started"
+    }
+
+
+def read_config(filename):
+    # read the mapping of project-id to accounting group from a file
+    try:
+        f = open(filename,"r")
+        try: 
+            result=json.loads(f.read())
+            f.close
+            return result
+        except:
+            print  >> sys.stderr, 'ERROR: Cannot parse configuration file ' + filename
+            exit(1)
+    except IOError:
+        print  >> sys.stderr, 'ERROR: Cannot open configuration file ' + filename
+        exit(1)
+        
+
+def auth_keystone(keystoneserver, username, password, tenant ):
+    auth='{"auth":{"passwordCredentials":{"username":"'+username+'","password":"'+password+'"}, "tenantName":"'+tenant+'"}}'
+    buf = cStringIO.StringIO()
+
+    c = pycurl.Curl()
+    c.setopt(c.URL, keystoneserver)
+    c.setopt(c.FOLLOWLOCATION, 1)
+    c.setopt(c.MAXREDIRS, 5)
+    c.setopt(c.WRITEFUNCTION, buf.write)
+    c.setopt(c.CAINFO,'/etc/pki/tls/certs/CERN-bundle.pem')
+    c.setopt(c.HTTPHEADER, ['Accept: application/json', 'Content-Type: application/json'])
+    c.setopt(c.POSTFIELDS, auth)
+    try:
+        c.perform()
+        answer=buf.getvalue()
+        buf.close()
+        #print answer
+        return answer
+    except pycurl.error, error:
+        errno, errstr = error
+        print  >> sys.stderr, 'An error occurred while doing the initial authentication: ', errstr 
+        exit(1)
+
+def receive_data(keystone_response,start,end,meter):
+    decoded = json.loads(keystone_response)
+    tokenid=decoded["access"]["token"]["id"]
+    uri='/v2/meters/%s' % meter
+    for endpoint in decoded["access"]["serviceCatalog"]:
+        if (endpoint["name"] == "ceilometer"):
+            for ceilometers in endpoint["endpoints"]:
+                ceilometer_server = urlparse.urlparse(ceilometers["publicURL"])[1]
+                query = {"q":[{"field":"timestamp","op":"ge","value":start},{"field": "timestamp","op":"le","value":end}] }
+                data = json.dumps(query)
+                header = {"Content-type": "application/json", "X-Auth-Token": tokenid.encode('ascii','ignore')}
+                req = 'GET'
+                get_auth_conn = httplib.HTTPConnection( ceilometer_server )
+                get_auth_conn.request( req, uri,  body=data,   headers=header  )
+                res = get_auth_conn.getresponse()
+                if res.status == 200:
+                    return json.loads( res.read() )
+
+def get_uid(username):
+    uid = 0
+    try:
+        uid = getpwnam(username).pw_uid
+    except:
+        print  >> sys.stderr, "Cannot find uid for" + username
+    return uid 
+
+def get_gid(mapping,report_groups,project):
+    # return the accounting group
+    try:
+        gid = mapping[project]
+        try: 
+            report_groups.index(gid)
+        except:
+            gid = 'unset'
+    except:
+        gid = 'unset'
+    return gid 
+
+
+def ana_received_cpu_data(mapping,report_groups,cpu_data,hide_names):
+    #
+    # filter for start and end records
+    #
+    for record in cpu_data:
+        gid = get_gid(mapping,report_groups,record['project_id'])
+        if (gid != 'unset'):
+            # memorize relevant data and find start and end record
+            resource_id = record['resource_id']
+            timestamp = record['timestamp']
+            vmuuid = record['resource_metadata']['host']
+            machinename = record['resource_metadata']['display_name']
+            uid = record['user_id']
+            memory = record['resource_metadata']['memory_mb']
+            vcpu = record['resource_metadata']['vcpus']
+            imageid = record['resource_metadata']['image_ref']
+            disk = record['resource_metadata']['disk_gb']
+            try:
+                state=statemap[record['resource_metadata']['state']]
+            except:
+                state="running"
+
+            try:
+                starttime = parser.parse(record['resource_metadata']['created_at']).strftime("%s")
+            except:
+                starttime = "NULL"
+
+            try: 
+                endtime = parser.parse(record['resource_metadata']['deleted_at']).strftime("%s")
+            except:
+                endtime = "NULL"
+
+            if record['counter_unit'] == 'ns':
+                cpucount = record['counter_volume']
+            else:
+                print >> sys.stderr, "ERROR: unknown counter unit type" + record['counter_unit'] 
+            if (hide_names):
+                try:
+                    uid=str(get_uid(uid))
+                except:
+                    uid="nobody"
+                machinename = record['resource_metadata']['name']
+            try: 
+                ssm_start[resource_id]
+                if (timestamp < ssm_start[resource_id]['timestamp']):
+                    ssm_start[resource_id]['timestamp'] = timestamp
+                    ssm_start[resource_id]['vmuuid'] = vmuuid
+                    ssm_start[resource_id]['machinename'] = machinename
+                    ssm_start[resource_id]['uid'] = uid
+                    ssm_start[resource_id]['gid'] = gid 
+                    ssm_start[resource_id]['cpucount']
+                    ssm_start[resource_id]['vcpu'] = vcpu
+                    ssm_start[resource_id]['memory'] = memory
+                    ssm_start[resource_id]['imageid'] = imageid
+                    ssm_start[resource_id]['disk'] = disk
+                    ssm_start[resource_id]['starttime'] = starttime
+                    ssm_start[resource_id]['endtime'] = endtime
+                    ssm_start[resource_id]['state'] = state
+                    
+            except KeyError:
+                ssm_start[resource_id]={}
+                ssm_start[resource_id]['timestamp'] = timestamp
+                ssm_start[resource_id]['vmuuid'] = vmuuid
+                ssm_start[resource_id]['machinename'] = machinename
+                ssm_start[resource_id]['uid'] = uid
+                ssm_start[resource_id]['gid'] = gid 
+                ssm_start[resource_id]['cpucount']=cpucount
+                ssm_start[resource_id]['vcpu'] = vcpu
+                ssm_start[resource_id]['memory'] = memory
+                ssm_start[resource_id]['imageid'] = imageid
+                ssm_start[resource_id]['disk'] = disk
+                ssm_start[resource_id]['starttime'] = starttime
+                ssm_start[resource_id]['endtime'] = endtime
+                ssm_start[resource_id]['state'] = state
+                
+            try:
+                ssm_end[resource_id]
+                if (timestamp > ssm_end[resource_id]['timestamp']):
+                    ssm_end[resource_id]['timestamp'] = timestamp
+                    ssm_end[resource_id]['vmuuid'] = vmuuid
+                    ssm_end[resource_id]['machinename'] = machinename
+                    ssm_end[resource_id]['uid'] = uid
+                    ssm_end[resource_id]['gid'] = gid 
+                    ssm_end[resource_id]['cpucount']=cpucount
+                    ssm_end[resource_id]['vcpu'] = vcpu
+                    ssm_end[resource_id]['memory'] = memory
+                    ssm_end[resource_id]['imageid'] = imageid
+                    ssm_end[resource_id]['disk'] = disk
+                    ssm_end[resource_id]['starttime'] = starttime
+                    ssm_end[resource_id]['endtime'] = endtime
+                    ssm_end[resource_id]['state'] = state
+                    
+            except KeyError:
+                ssm_end[resource_id]={}
+                ssm_end[resource_id]['timestamp'] = timestamp
+                ssm_end[resource_id]['vmuuid'] = vmuuid
+                ssm_end[resource_id]['machinename'] = machinename
+                ssm_end[resource_id]['uid'] = uid
+                ssm_end[resource_id]['gid'] = gid 
+                ssm_end[resource_id]['cpucount'] = cpucount
+                ssm_end[resource_id]['vcpu'] = vcpu
+                ssm_end[resource_id]['memory'] = memory
+                ssm_end[resource_id]['imageid'] = imageid
+                ssm_end[resource_id]['disk'] = disk
+                ssm_end[resource_id]['starttime'] = starttime
+                ssm_end[resource_id]['endtime'] = endtime
+                ssm_end[resource_id]['state'] = state
+                
+def ana_received_net_data(mapping,report_groups,net_data,hide_names):
+    #
+    # filter for start and end records
+    #
+    for record in net_data:
+        gid = get_gid(mapping,report_groups,record['project_id'])
+        if (gid != 'unset'):
+            # memorize relevant data and find start and end record
+            resource_id = record['resource_metadata']['instance_id']
+            timestamp = record['timestamp']
+            counter_name = record['counter_name']
+            if record['counter_unit'] == 'B':
+                netcount = record['counter_volume']
+            else:
+                print >> sys.stderr, "ERROR: unknown counter unit type" + record['counter_unit'] 
+                
+            try: 
+                ssm_start[resource_id][counter_name]
+                if (timestamp < ssm_start[resource_id][counter_name]['timestamp']):
+                    ssm_start[resource_id][counter_name]['timestamp'] = timestamp
+                    ssm_start[resource_id][counter_name]['counter_value'] = netcount
+
+            except KeyError:
+                ssm_start[resource_id][counter_name]={}
+                ssm_start[resource_id][counter_name]['timestamp'] = timestamp
+                ssm_start[resource_id][counter_name]['counter_value'] = netcount
+                
+            try:
+                ssm_end[resource_id][counter_name]
+                if (timestamp > ssm_end[resource_id][counter_name]['timestamp']):
+                    ssm_end[resource_id][counter_name]['timestamp'] = timestamp
+                    ssm_end[resource_id][counter_name]['counter_value'] = netcount
+                    
+            except KeyError:
+                ssm_end[resource_id][counter_name]={}
+                ssm_end[resource_id][counter_name]['timestamp'] = timestamp
+                ssm_end[resource_id][counter_name]['counter_value'] = netcount
+                
+def PrintSSMRecords(sitename, starttime, endtime):
+    startepoch = parser.parse(starttime).strftime("%s")
+    endepoch   = parser.parse(endtime).strftime("%s")
+    line = ""
+    for resource_id in ssm_end.keys():
+        if ssm_end[resource_id]:
+            line += "%s\n" % "APEL-cloud-message: v0.2"
+            line += "%s\n" % "VMUUID: "+ssm_end[resource_id]['vmuuid']
+            line += "%s\n" % "SiteName: "+sitename
+            line += "%s\n" % "MachineName: "+ssm_end[resource_id]['machinename']
+            line += "%s\n" % "LocalUserId: "+ssm_end[resource_id]['uid']
+            line += "%s\n" % "LocalGroupId: "+ssm_end[resource_id]['gid']
+            line += "%s\n" % "GlobalUserName: NULL"
+            line += "%s\n" % "FQAN: NULL"
+            line += "%s\n" % "Status: "+ssm_end[resource_id]['state']
+            line += "%s\n" % "StartTime: "+str(ssm_end[resource_id]['starttime'])
+            line += "%s\n" % "EndTime: "+str(ssm_end[resource_id]['endtime'])
+            line += "%s\n" % "SuspendDuration: NULL"
+            line += "%s\n" % "WallDuration: NULL"
+            line += "%s\n" % "CpuDuration: "+str(float(ssm_end[resource_id]['cpucount'])/1000000000.0)
+            line += "%s\n" % "CpuCount: "+str(ssm_end[resource_id]['vcpu'])
+            line += "%s\n" % "NetworkType: NULL"
+            try:
+                line += "%s\n" % "NetworkInbound: "+str(float(ssm_end[resource_id]['network.incoming.bytes']['counter_value'])/1073741824.0)
+            except KeyError:
+                line += "%s\n" % "NetworkInbound: NULL"
+            try:
+                line += "%s\n" % "NetworkOutbound: "+str(float(ssm_end[resource_id]['network.outgoing.bytes']['counter_value'])/1073741824.0)
+            except KeyError:
+                line += "%s\n" % "NetworkOutbound: NULL"
+            line += "%s\n" % "Memory: "+ssm_end[resource_id]['memory']
+            line += "%s\n" % "Disk: "+str(ssm_end[resource_id]['disk'])
+            line += "%s\n" % "StorageRecordId: NULL"
+            line += "%s\n" % "ImageId: "+ssm_end[resource_id]['imageid']
+            line += "%s\n" % "CloudType: OpenStack"
+            line += "%s\n" % "%%"
+    return line
+
+
+
+parser = argparse.ArgumentParser(description='Publish ceilometer records to APEL using SSM2')
+parser.add_argument('-p', '--publish', dest='publish', action='store_true', help='directly publish the data',default=False)
+parser.add_argument('-v', '--verbose', dest='verbose', action='store_true', help='print the result to the screen',default=False)
+parser.add_argument('-s', '--start', dest='start', action='store',help='start time for the publication',default="2013-08-12T00:00:00")
+parser.add_argument('-e', '--end', dest='end', action='store', help='end time for the publicatin',default="2013-08-12T23:59:59")
+parser.add_argument('-c', '--config', dest='configfile', action='store', help='configuration file location',default="/etc/ceilometer2ssm.conf")
+
+args = parser.parse_args()
+start =  args.start
+end = args.end
+publish = args.publish
+verbose = args.verbose
+configfile = args.configfile
+
+if (verbose) :
+    print   >> sys.stderr, "Verbose output will be created"
+    print   >> sys.stderr, "Reading configuration from "+configfile
+    print   >> sys.stderr, "Records are processed between "+start+" and "+end
+    if (publish):
+        print   >> sys.stderr, "Resulting records will be published to APEL"
+    else:
+        print   >> sys.stderr, "Will not try to publish the result"
+
+# read mapping from file
+config = read_config(configfile)
+mapping = config["mapping"]
+sitename = config["sitename"]
+report_groups = config["report_groups"]
+hide_names = config["hide_names"]
+
+try:
+    secrets = config["secrets"]
+except:
+    if (verbose):
+        print   >> sys.stderr, "No secrets defined in the configuration file"
+    
+try:
+    os_auth_url=secrets["os_auth_url"]
+except:
+    try:
+        os_auth_url=os.environ['OS_AUTH_URL']
+    except KeyError:
+        print  >> sys.stderr, "ERROR: OS_AUTH_URL is not set"
+        exit(1)
+try:
+    os_username=secrets["os_username"]
+except:
+    try:
+        os_username=os.environ['OS_USERNAME']
+    except KeyError:
+        print  >> sys.stderr, "ERROR: OS_USERNAME is not set"
+        exit(1)
+
+try:
+    os_password=secrets["os_password"]
+except:
+    try:
+        os_username=os.environ['OS_PASSWORD']
+    except KeyError:
+        print  >> sys.stderr, "ERROR: OS_PASSWORD is not set"
+        exit(1)
+
+try:
+    os_tenant_name=secrets["os_tenant_name"]
+except:
+    try:
+        os_tenant_name=os.environ['OS_TENANT_NAME']
+    except KeyError:
+        print  >> sys.stderr, "ERROR: OS_TENANT_NAME is not set"
+        exit(1)
+
+if (verbose):
+    print  >> sys.stderr, "Getting authentication token from keystone"
+
+keystone_response = auth_keystone(os_auth_url+'/tokens',os_username,os_password,os_tenant_name)
+
+#
+cpu_used = receive_data(keystone_response,start,end,'cpu')
+net_in   = receive_data(keystone_response,start,end,'network.incoming.bytes')
+net_out  = receive_data(keystone_response,start,end,'network.outgoing.bytes')
+
+ana_received_cpu_data(mapping,report_groups,cpu_used,hide_names)
+ana_received_net_data(mapping,report_groups,net_in,hide_names)
+ana_received_net_data(mapping,report_groups,net_out,hide_names)
+
+records = PrintSSMRecords(sitename,start,end)
+if (verbose):
+    print records
+
+if (publish):
+    dirq = QueueSimple('/var/spool/apel/outgoing/')
+    dirq.add(records)
+    command_line="/usr/bin/ssmsend --config /etc/apel/sender.cfg"
+    args = shlex.split(command_line)
+    try:
+        p = subprocess.Popen(args)
+        if (verbose):
+            print  >> sys.stderr, p
+    except:
+        print  >> sys.stderr, "ERROR: Failed to send the message"
+        exit(1)
