@@ -1,6 +1,6 @@
 Summary: ceilomter to SSM2 interface
 Name: ceilometer2ssm
-Version: 0.0.1
+Version: 0.0.2
 Release: 1%{?dist}
 License: ASL2
 Group: PES
@@ -43,6 +43,11 @@ rm -rf $RPM_BUILD_ROOT
 %preun
 
 %changelog
+* Wed Sep 11 2013 Ulrich Schwickerath <Ulrich.Schwickerath@cern.ch> -0.0.1-1
+- omit fields if the values are not defined instead or reporting NULL
+- more verbose output for debugging
+- fix output format
+
 * Wed Sep 11 2013 Ulrich Schwickerath <Ulrich.Schwickerath@cern.ch> -0.0.1-1
 - initial version
 

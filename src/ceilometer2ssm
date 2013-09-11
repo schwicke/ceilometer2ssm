@@ -268,41 +268,64 @@ def ana_received_net_data(mapping,report_groups,net_data,hide_names):
                 ssm_end[resource_id][counter_name]['timestamp'] = timestamp
                 ssm_end[resource_id][counter_name]['counter_value'] = netcount
                 
-def PrintSSMRecords(sitename, starttime, endtime):
-    startepoch = parser.parse(starttime).strftime("%s")
-    endepoch   = parser.parse(endtime).strftime("%s")
+def PrintSSMRecords(sitename, verbose):
     line = ""
     for resource_id in ssm_end.keys():
         if ssm_end[resource_id]:
-            line += "%s\n" % "APEL-cloud-message: v0.2"
-            line += "%s\n" % "VMUUID: "+ssm_end[resource_id]['vmuuid']
-            line += "%s\n" % "SiteName: "+sitename
-            line += "%s\n" % "MachineName: "+ssm_end[resource_id]['machinename']
-            line += "%s\n" % "LocalUserId: "+ssm_end[resource_id]['uid']
-            line += "%s\n" % "LocalGroupId: "+ssm_end[resource_id]['gid']
-            line += "%s\n" % "GlobalUserName: NULL"
-            line += "%s\n" % "FQAN: NULL"
-            line += "%s\n" % "Status: "+ssm_end[resource_id]['state']
-            line += "%s\n" % "StartTime: "+str(ssm_end[resource_id]['starttime'])
-            line += "%s\n" % "EndTime: "+str(ssm_end[resource_id]['endtime'])
-            line += "%s\n" % "SuspendDuration: NULL"
-            line += "%s\n" % "WallDuration: NULL"
-            line += "%s\n" % "CpuDuration: "+str(float(ssm_end[resource_id]['cpucount'])/1000000000.0)
-            line += "%s\n" % "CpuCount: "+str(ssm_end[resource_id]['vcpu'])
-            line += "%s\n" % "NetworkType: NULL"
+            line += "APEL-cloud-message: %s\n" % "v0.2"
+            line += "VMUUID: %s\n" % ssm_end[resource_id]['vmuuid']
+            line += "SiteName: %s\n" % sitename
+            line += "MachineName: %s\n" % ssm_end[resource_id]['machinename']
+            line += "LocalUserId: %s\n" % str(ssm_end[resource_id]['uid'])
+            line += "LocalGroupId: %s\n" % str(ssm_end[resource_id]['gid'])
+            line += "Status: %s\n" % ssm_end[resource_id]['state']
             try:
-                line += "%s\n" % "NetworkInbound: "+str(float(ssm_end[resource_id]['network.incoming.bytes']['counter_value'])/1073741824.0)
-            except KeyError:
-                line += "%s\n" % "NetworkInbound: NULL"
+                line += "StartTime: %d\n" % int(ssm_end[resource_id]['starttime'])
+            except:
+                if (verbose):
+                    print >> sys.stderr,"INFO: starttime is not set. Skipping"
             try:
-                line += "%s\n" % "NetworkOutbound: "+str(float(ssm_end[resource_id]['network.outgoing.bytes']['counter_value'])/1073741824.0)
-            except KeyError:
-                line += "%s\n" % "NetworkOutbound: NULL"
-            line += "%s\n" % "Memory: "+ssm_end[resource_id]['memory']
-            line += "%s\n" % "Disk: "+str(ssm_end[resource_id]['disk'])
-            line += "%s\n" % "StorageRecordId: NULL"
-            line += "%s\n" % "ImageId: "+ssm_end[resource_id]['imageid']
-            line += "%s\n" % "CloudType: OpenStack"
+                line += "EndTime: %s\n" % int(ssm_end[resource_id]['endtime'])
+            except:
+                if (verbose):
+                    print >> sys.stderr,"INFO: endtime is not set. Skipping"
+            line += "CpuDuration: %d\n" % int(0.5+float(ssm_end[resource_id]['cpucount'])/1000000000.0)
+            try:
+                line += "CpuCount: %d\n" %  int(ssm_end[resource_id]['vcpu'])
+            except:
+                if (verbose):
+                    print >> sys.stderr, "INFO: cannot get cpu count. Skipping"
+                    print >> sys.stderr, ssm_end[resource_id]['vcpu']
+            try:
+                line += "NetworkInbound: %d\n" % int(0.5+float(ssm_end[resource_id]['network.incoming.bytes']['counter_value'])/1073741824.0)
+            except:
+                if (verbose):
+                    print >> sys.stderr, "INFO: Inbound traffic is not set. Skipping"
+            try:
+                line += "NetworkOutbound: %s\n" % int(0.5+float(ssm_end[resource_id]['network.outgoing.bytes']['counter_value'])/1073741824.0)
+            except :
+                if (verbose):
+                    print >> sys.stderr, "INFO: Outbound traffic is not set. Skipping"
+            try:
+                line += "Memory: %d\n" % int(ssm_end[resource_id]['memory'])
+            except :
+                if (verbose):
+                    print >> sys.stderr, "INFO: memory is not set. Skipping"
+                    print >> sys.stderr, ssm_end[resource_id]['memory']
+            try:
+                line += "Disk: %d\n" % int(ssm_end[resource_id]['disk'])
+            except:
+                if (verbose):
+                    print >> sys.stderr, "INFO: disk  is not set. Skipping"
+            # to be added later on
+            # line += "GlobalUserName: %s\n" % "NULL"
+            # line += "%s\n" % "FQAN: NULL"
+            # line += "SuspendDuration: %s\n" % "NULL"
+            # line += "WallDuration: %s\n" % "NULL"
+            # line += "%s\n" % "NetworkType: NULL"
+            # line += "StorageRecordId: %s\n" % "NULL"
+            line += "ImageId: %s\n" % str(ssm_end[resource_id]['imageid'])
+            line += "CloudType: %s\n" % "OpenStack"
             line += "%s\n" % "%%"
     return line
 
@@ -314,7 +337,7 @@ parser.add_argument('-v', '--verbose', dest='verbose', action='store_true', help
 parser.add_argument('-s', '--start', dest='start', action='store',help='start time for the publication',default="2013-08-12T00:00:00")
 parser.add_argument('-e', '--end', dest='end', action='store', help='end time for the publicatin',default="2013-08-12T23:59:59")
 parser.add_argument('-c', '--config', dest='configfile', action='store', help='ceilometer2ssm configuration file location',default="/etc/ceilometer2ssm.conf")
-parser.add_arguemnt('-a', '--apelssmconfig',dest='apelssmconf',action='store', help='location of the apel-ssm configuration file', default='/etc/apel/sender.cfg')
+parser.add_argument('-a', '--apelssmconfig',dest='apelssmconf',action='store', help='location of the apel-ssm configuration file', default='/etc/apel/sender.cfg')
 
 args = parser.parse_args()
 start =  args.start
@@ -367,7 +390,7 @@ try:
     os_password=secrets["os_password"]
 except:
     try:
-        os_username=os.environ['OS_PASSWORD']
+        os_password=os.environ['OS_PASSWORD']
     except KeyError:
         print  >> sys.stderr, "ERROR: OS_PASSWORD is not set"
         exit(1)
@@ -385,7 +408,7 @@ try:
     os_cacert=secrets["os_cacert"]
 except:
     try:
-        os_tenant_name=os.environ['OS_CACERT']
+        os_cacert=os.environ['OS_CACERT']
     except KeyError:
         print  >> sys.stderr, "ERROR: OS_CACERT is not set"
         exit(1)
@@ -399,12 +422,14 @@ keystone_response = auth_keystone(os_auth_url+'/tokens',os_username,os_password,
 cpu_used = receive_data(keystone_response,start,end,'cpu')
 net_in   = receive_data(keystone_response,start,end,'network.incoming.bytes')
 net_out  = receive_data(keystone_response,start,end,'network.outgoing.bytes')
+if (verbose):
+    print >> sys.stderr, json.dumps(cpu_used, indent=2)
 
 ana_received_cpu_data(mapping,report_groups,cpu_used,hide_names)
 ana_received_net_data(mapping,report_groups,net_in,hide_names)
 ana_received_net_data(mapping,report_groups,net_out,hide_names)
 
-records = PrintSSMRecords(sitename,start,end)
+records = PrintSSMRecords(sitename,verbose)
 if (verbose):
     print records
 
