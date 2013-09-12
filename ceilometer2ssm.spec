@@ -1,6 +1,6 @@
 Summary: ceilomter to SSM2 interface
 Name: ceilometer2ssm
-Version: 0.1.0
+Version: 0.1.1
 Release: 1%{?dist}
 License: ASL2
 Group: PES
@@ -36,8 +36,8 @@ rm -rf $RPM_BUILD_ROOT
 %files 
 %defattr(-,root,root)
 /usr/libexec/ceilometer2ssm
-/etc/cron.daily/cloudaccounting
-
+/usr/libexec/cloudaccounting
+%config(noreplace) /etc/cron.d/cloudaccounting.cron
 %config(noreplace) /etc/ceilometer2ssm.conf
 
 %post 
@@ -45,7 +45,7 @@ rm -rf $RPM_BUILD_ROOT
 %preun
 
 %changelog
-* Thu Sep 12 2013 Ulrich Schwickerath <Ulrich.Schwickerath@cern.ch> -0.1.0-1
+* Thu Sep 12 2013 Ulrich Schwickerath <Ulrich.Schwickerath@cern.ch> -0.1.1-1
 - add cron job to enable a daily upload
 
 * Wed Sep 11 2013 Ulrich Schwickerath <Ulrich.Schwickerath@cern.ch> -0.0.5-1
