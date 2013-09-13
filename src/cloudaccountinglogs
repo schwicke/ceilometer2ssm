@@ -1,0 +1,8 @@
+/var/log/cloudaccounting.log {
+    weekly
+    missingok
+    notifempty
+    sharedscripts
+    rotate 2
+    compress
+}

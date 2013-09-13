@@ -60,7 +60,7 @@ def read_config(filename):
         exit(1)
         
 
-def auth_keystone(keystoneserver, username, password, tenant, cacert ):
+def auth_keystone(keystoneserver, username, password, tenant, cacert,debug ):
     auth='{"auth":{"passwordCredentials":{"username":"'+username+'","password":"'+password+'"}, "tenantName":"'+tenant+'"}}'
     buf = cStringIO.StringIO()
 
@@ -76,30 +76,38 @@ def auth_keystone(keystoneserver, username, password, tenant, cacert ):
         c.perform()
         answer=buf.getvalue()
         buf.close()
-        #print answer
+        if (debug):
+            print >> sys.stderr, "Keystone authentication succeeded"
         return answer
     except pycurl.error, error:
         errno, errstr = error
         print  >> sys.stderr, 'An error occurred while doing the initial authentication: ', errstr 
         exit(1)
 
-def receive_data(keystone_response,start,end,meter):
+def receive_data(verbose,debug,keystone_response,start,end,meter):
     decoded = json.loads(keystone_response)
     tokenid=decoded["access"]["token"]["id"]
     uri='/v2/meters/%s' % meter
     for endpoint in decoded["access"]["serviceCatalog"]:
+        if (debug):
+            print >> sys.stderr, "Examining endpoint: " + json.dumps(endpoint, indent=2)
         if (endpoint["name"] == "ceilometer"):
             for ceilometers in endpoint["endpoints"]:
                 ceilometer_server = urlparse.urlparse(ceilometers["publicURL"])[1]
+                if (debug):
+                    print >> sys.stderr, "Query ceilometer server at: " + ceilometer_server
                 query = {"q":[{"field":"timestamp","op":"ge","value":start},{"field": "timestamp","op":"le","value":end}] }
                 data = json.dumps(query)
                 header = {"Content-type": "application/json", "X-Auth-Token": tokenid.encode('ascii','ignore')}
                 req = 'GET'
                 get_auth_conn = httplib.HTTPConnection( ceilometer_server )
-                get_auth_conn.request( req, uri,  body=data,   headers=header  )
-                res = get_auth_conn.getresponse()
-                if res.status == 200:
-                    return json.loads( res.read() )
+                try:
+                    get_auth_conn.request( req, uri,  body=data,   headers=header  )
+                    res = get_auth_conn.getresponse()
+                    if res.status == 200:
+                        return json.loads( res.read() )
+                except:
+                    print >> sys.stderr, "Failed to query ceilometer server at "+ceilometers
 
 def get_uid(username):
     uid = 0
@@ -268,10 +276,12 @@ def ana_received_net_data(mapping,report_groups,net_data,hide_names):
                 ssm_end[resource_id][counter_name]['timestamp'] = timestamp
                 ssm_end[resource_id][counter_name]['counter_value'] = netcount
                 
-def PrintSSMRecords(sitename, verbose):
+def PrintSSMRecords(sitename, verbose, debug):
     line = "APEL-cloud-message: %s\n" % "v0.2"
     for resource_id in ssm_end.keys():
         if ssm_end[resource_id]:
+            if (verbose):
+                print >> sys.stderr, "INFO: reported period: from " + ssm_start[resource_id]['timestamp'] + " to " + ssm_end[resource_id]['timestamp'] 
             line += "VMUUID: %s\n" % ssm_end[resource_id]['vmuuid']
             line += "SiteName: %s\n" % sitename
             line += "MachineName: %s\n" % ssm_end[resource_id]['machinename']
@@ -285,43 +295,43 @@ def PrintSSMRecords(sitename, verbose):
                 line += "StartTime: %d\n" % int(ssm_end[resource_id]['starttime'])
             except:
                 line += "StartTime: %d\n" % 0
-                if (verbose):
-                    print >> sys.stderr,"INFO: starttime is not set. Skipping"
+                if (debug):
+                    print >> sys.stderr,"DEBUG: starttime is not set. Skipping"
             try:
                 line += "EndTime: %d\n" % int(ssm_end[resource_id]['endtime'])
             except:
                 line += "EndTime: %d\n" % 0
-                if (verbose):
-                    print >> sys.stderr,"INFO: endtime is not set. Skipping"
+                if (debug):
+                    print >> sys.stderr,"DEBUG: endtime is not set. Skipping"
             line += "CpuDuration: %d\n" % int(0.5+float(ssm_end[resource_id]['cpucount'])/1000000000.0)
             try:
                 line += "CpuCount: %d\n" %  int(ssm_end[resource_id]['vcpu'])
             except:
                 line += "CpuCount: %d\n" %  0
-                if (verbose):
-                    print >> sys.stderr, "INFO: cannot get cpu count. Skipping"
+                if (debug):
+                    print >> sys.stderr, "DEBUG: cannot get cpu count. Skipping"
                     print >> sys.stderr, ssm_end[resource_id]['vcpu']
             try:
                 line += "NetworkInbound: %d\n" % int(0.5+float(ssm_end[resource_id]['network.incoming.bytes']['counter_value'])/1073741824.0)
             except:
-                if (verbose):
-                    print >> sys.stderr, "INFO: Inbound traffic is not set. Skipping"
+                if (debug):
+                    print >> sys.stderr, "DEBUG: Inbound traffic is not set. Skipping"
             try:
                 line += "NetworkOutbound: %s\n" % int(0.5+float(ssm_end[resource_id]['network.outgoing.bytes']['counter_value'])/1073741824.0)
             except :
-                if (verbose):
-                    print >> sys.stderr, "INFO: Outbound traffic is not set. Skipping"
+                if (debug):
+                    print >> sys.stderr, "DEBUG: Outbound traffic is not set. Skipping"
             try:
                 line += "Memory: %d\n" % int(ssm_end[resource_id]['memory'])
             except :
-                if (verbose):
-                    print >> sys.stderr, "INFO: memory is not set. Skipping"
+                if (debug):
+                    print >> sys.stderr, "DEBUG: memory is not set. Skipping"
                     print >> sys.stderr, ssm_end[resource_id]['memory']
             try:
                 line += "Disk: %d\n" % int(ssm_end[resource_id]['disk'])
             except:
-                if (verbose):
-                    print >> sys.stderr, "INFO: disk  is not set. Skipping"
+                if (debug):
+                    print >> sys.stderr, "DEBUG: disk  is not set. Skipping"
             # to be added later on
             # line += "GlobalUserName: %s\n" % "NULL"
             # line += "%s\n" % "FQAN: NULL"
@@ -338,7 +348,8 @@ def PrintSSMRecords(sitename, verbose):
 
 parser = argparse.ArgumentParser(description='Publish ceilometer records to APEL using SSM2')
 parser.add_argument('-p', '--publish', dest='publish', action='store_true', help='directly publish the data',default=False)
-parser.add_argument('-v', '--verbose', dest='verbose', action='store_true', help='print the result to the screen',default=False)
+parser.add_argument('-v', '--verbose', dest='verbose', action='store_true', help='be verbose',default=False)
+parser.add_argument('-d', '--debug', dest='debug', action='store_true', help='produce debugging output',default=False)
 parser.add_argument('-s', '--start', dest='start', action='store',help='start time for the publication',default="2013-08-12T00:00:00")
 parser.add_argument('-e', '--end', dest='end', action='store', help='end time for the publicatin',default="2013-08-12T23:59:59")
 parser.add_argument('-c', '--config', dest='configfile', action='store', help='ceilometer2ssm configuration file location',default="/etc/ceilometer2ssm.conf")
@@ -349,8 +360,13 @@ start =  args.start
 end = args.end
 publish = args.publish
 verbose = args.verbose
+debug = args.debug
 configfile = args.configfile
 apelssmconf = args.apelssmconf
+
+if (debug):
+    verbose = True
+    print >> sys.stderr, "Debug mode is enabled: will not actually publish but just retrieve the data and report!"
 
 if (verbose) :
     print   >> sys.stderr, "Verbose output will be created"
@@ -418,35 +434,53 @@ except:
         print  >> sys.stderr, "ERROR: OS_CACERT is not set"
         exit(1)
 
-if (verbose):
+if (debug):
     print  >> sys.stderr, "Getting authentication token from keystone"
 
-keystone_response = auth_keystone(os_auth_url+'/tokens',os_username,os_password,os_tenant_name,os_cacert)
+keystone_response = auth_keystone(os_auth_url+'/tokens',os_username,os_password,os_tenant_name,os_cacert,debug)
 
-#
-cpu_used = receive_data(keystone_response,start,end,'cpu')
-net_in   = receive_data(keystone_response,start,end,'network.incoming.bytes')
-net_out  = receive_data(keystone_response,start,end,'network.outgoing.bytes')
-if (verbose):
-    print >> sys.stderr, json.dumps(cpu_used, indent=2)
+if (debug):
+    print >> sys.stderr, "Keystone response:"
+    print >> sys.stderr, json.dumps(keystone_response, indent=2)
+    print >> sys.stderr, "reading cpu and net information from ceilometer"
+
+cpu_used = receive_data(verbose,debug,keystone_response,start,end,'cpu')
+if (debug):
+    print >> sys.stderr, "read cpu_used records"
+
+net_in   = receive_data(verbose,debug,keystone_response,start,end,'network.incoming.bytes')
+if (debug):
+    print >> sys.stderr, "read net_in records"
+
+net_out  = receive_data(verbose,debug,keystone_response,start,end,'network.outgoing.bytes')
+if (debug):
+    print >> sys.stderr, "read net_out records"
 
 ana_received_cpu_data(mapping,report_groups,cpu_used,hide_names)
 ana_received_net_data(mapping,report_groups,net_in,hide_names)
 ana_received_net_data(mapping,report_groups,net_out,hide_names)
 
-records = PrintSSMRecords(sitename,verbose)
-if (verbose):
+records = PrintSSMRecords(sitename,verbose,debug)
+
+if (debug):
     print records
 
 if (publish):
     dirq = QueueSimple('/var/spool/apel/outgoing/')
     dirq.add(records)
     command_line="/usr/bin/ssmsend --config " + apelssmconf
-    args = shlex.split(command_line)
-    try:
-        p = subprocess.Popen(args)
-        if (verbose):
-            print  >> sys.stderr, p
-    except:
-        print  >> sys.stderr, "ERROR: Failed to send the message"
-        exit(1)
+    if (debug):
+        print >> sys.stderr, "Would now run \""+command_line+"\""
+    else:
+        args = shlex.split(command_line)
+        try:
+            p = subprocess.Popen(args)
+            if (p.wait() != 0):
+                print  >> sys.stderr, p
+                exit(1)
+            if (verbose):
+                print  >> sys.stderr, p
+        except:
+            print  >> sys.stderr, "ERROR: Failed to send the message"
+            exit(1)
+            
