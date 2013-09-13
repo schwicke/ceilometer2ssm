@@ -89,25 +89,28 @@ def receive_data(verbose,debug,keystone_response,start,end,meter):
     tokenid=decoded["access"]["token"]["id"]
     uri='/v2/meters/%s' % meter
     for endpoint in decoded["access"]["serviceCatalog"]:
-        if (debug):
-            print >> sys.stderr, "Examining endpoint: " + json.dumps(endpoint, indent=2)
         if (endpoint["name"] == "ceilometer"):
             for ceilometers in endpoint["endpoints"]:
                 ceilometer_server = urlparse.urlparse(ceilometers["publicURL"])[1]
-                if (debug):
-                    print >> sys.stderr, "Query ceilometer server at: " + ceilometer_server
                 query = {"q":[{"field":"timestamp","op":"ge","value":start},{"field": "timestamp","op":"le","value":end}] }
                 data = json.dumps(query)
                 header = {"Content-type": "application/json", "X-Auth-Token": tokenid.encode('ascii','ignore')}
                 req = 'GET'
-                get_auth_conn = httplib.HTTPConnection( ceilometer_server )
+                if (debug):
+                    print >> sys.stderr, "Query ceilometer server at: " + ceilometer_server
+                    print >> sys.stderr, "Query it with: :" + json.dumps(query , indent=2)
                 try:
-                    get_auth_conn.request( req, uri,  body=data,   headers=header  )
-                    res = get_auth_conn.getresponse()
-                    if res.status == 200:
-                        return json.loads( res.read() )
+                    get_auth_conn = httplib.HTTPConnection( ceilometer_server )
+                    try:
+                        get_auth_conn.request( req, uri,  body=data,   headers=header  )
+                        res = get_auth_conn.getresponse()
+                        if res.status == 200:
+                            return json.loads( res.read() )
+                    except:
+                        print >> sys.stderr, "Failed to query ceilometer server at " + ceilometers
+                        exit(1)
                 except:
-                    print >> sys.stderr, "Failed to query ceilometer server at "+ceilometers
+                    print >> sys.stderr, "failed to create the connection object"
 
 def get_uid(username):
     uid = 0
@@ -134,53 +137,72 @@ def ana_received_cpu_data(mapping,report_groups,cpu_data,hide_names):
     #
     # filter for start and end records
     #
-    for record in cpu_data:
-        gid = get_gid(mapping,report_groups,record['project_id'])
-        if (gid != 'unset'):
-            # memorize relevant data and find start and end record
-            resource_id = record['resource_id']
-            timestamp = record['timestamp']
-            vmuuid = record['resource_metadata']['host']
-            machinename = record['resource_metadata']['display_name']
-            uid = record['user_id']
-            memory = record['resource_metadata']['memory_mb']
-            vcpu = record['resource_metadata']['vcpus']
-            imageid = record['resource_metadata']['image_ref']
-            disk = record['resource_metadata']['disk_gb']
-            try:
-                state=statemap[record['resource_metadata']['state']]
-            except:
-                state="running"
-
-            try:
-                starttime = parser.parse(record['resource_metadata']['created_at']).strftime("%s")
-            except:
-                starttime = "NULL"
-
-            try: 
-                endtime = parser.parse(record['resource_metadata']['deleted_at']).strftime("%s")
-            except:
-                endtime = "NULL"
-
-            if record['counter_unit'] == 'ns':
-                cpucount = record['counter_volume']
-            else:
-                print >> sys.stderr, "ERROR: unknown counter unit type" + record['counter_unit'] 
-            if (hide_names):
+    try:
+        for record in cpu_data:
+            gid = get_gid(mapping,report_groups,record['project_id'])
+            if (gid != 'unset'):
+                # memorize relevant data and find start and end record
+                resource_id = record['resource_id']
+                timestamp = record['timestamp']
+                vmuuid = record['resource_metadata']['host']
+                machinename = record['resource_metadata']['display_name']
+                uid = record['user_id']
+                memory = record['resource_metadata']['memory_mb']
+                vcpu = record['resource_metadata']['vcpus']
+                imageid = record['resource_metadata']['image_ref']
+                disk = record['resource_metadata']['disk_gb']
                 try:
-                    uid=str(get_uid(uid))
+                    state=statemap[record['resource_metadata']['state']]
                 except:
-                    uid="nobody"
-                machinename = record['resource_metadata']['name']
-            try: 
-                ssm_start[resource_id]
-                if (timestamp < ssm_start[resource_id]['timestamp']):
+                    state="running"
+   
+                try:
+                    starttime = parser.parse(record['resource_metadata']['created_at']).strftime("%s")
+                except:
+                    starttime = "NULL"
+
+                try: 
+                    endtime = parser.parse(record['resource_metadata']['deleted_at']).strftime("%s")
+                except:
+                    endtime = "NULL"
+
+                if record['counter_unit'] == 'ns':
+                    cpucount = record['counter_volume']
+                else:
+                    print >> sys.stderr, "ERROR: unknown counter unit type" + record['counter_unit'] 
+
+                if (hide_names):
+                    machinename = record['resource_metadata']['name']
+                    try:
+                        uid=str(get_uid(uid))
+                    except:
+                        uid="nobody"
+
+                try: 
+                    ssm_start[resource_id]
+                    if (timestamp < ssm_start[resource_id]['timestamp']):
+                        ssm_start[resource_id]['timestamp'] = timestamp
+                        ssm_start[resource_id]['vmuuid'] = vmuuid
+                        ssm_start[resource_id]['machinename'] = machinename
+                        ssm_start[resource_id]['uid'] = uid
+                        ssm_start[resource_id]['gid'] = gid 
+                        ssm_start[resource_id]['cpucount']
+                        ssm_start[resource_id]['vcpu'] = vcpu
+                        ssm_start[resource_id]['memory'] = memory
+                        ssm_start[resource_id]['imageid'] = imageid
+                        ssm_start[resource_id]['disk'] = disk
+                        ssm_start[resource_id]['starttime'] = starttime
+                        ssm_start[resource_id]['endtime'] = endtime
+                        ssm_start[resource_id]['state'] = state
+                        
+                except KeyError:
+                    ssm_start[resource_id]={}
                     ssm_start[resource_id]['timestamp'] = timestamp
                     ssm_start[resource_id]['vmuuid'] = vmuuid
                     ssm_start[resource_id]['machinename'] = machinename
                     ssm_start[resource_id]['uid'] = uid
                     ssm_start[resource_id]['gid'] = gid 
-                    ssm_start[resource_id]['cpucount']
+                    ssm_start[resource_id]['cpucount']=cpucount
                     ssm_start[resource_id]['vcpu'] = vcpu
                     ssm_start[resource_id]['memory'] = memory
                     ssm_start[resource_id]['imageid'] = imageid
@@ -189,31 +211,31 @@ def ana_received_cpu_data(mapping,report_groups,cpu_data,hide_names):
                     ssm_start[resource_id]['endtime'] = endtime
                     ssm_start[resource_id]['state'] = state
                     
-            except KeyError:
-                ssm_start[resource_id]={}
-                ssm_start[resource_id]['timestamp'] = timestamp
-                ssm_start[resource_id]['vmuuid'] = vmuuid
-                ssm_start[resource_id]['machinename'] = machinename
-                ssm_start[resource_id]['uid'] = uid
-                ssm_start[resource_id]['gid'] = gid 
-                ssm_start[resource_id]['cpucount']=cpucount
-                ssm_start[resource_id]['vcpu'] = vcpu
-                ssm_start[resource_id]['memory'] = memory
-                ssm_start[resource_id]['imageid'] = imageid
-                ssm_start[resource_id]['disk'] = disk
-                ssm_start[resource_id]['starttime'] = starttime
-                ssm_start[resource_id]['endtime'] = endtime
-                ssm_start[resource_id]['state'] = state
-                
-            try:
-                ssm_end[resource_id]
-                if (timestamp > ssm_end[resource_id]['timestamp']):
+                try:
+                    ssm_end[resource_id]
+                    if (timestamp > ssm_end[resource_id]['timestamp']):
+                        ssm_end[resource_id]['timestamp'] = timestamp
+                        ssm_end[resource_id]['vmuuid'] = vmuuid
+                        ssm_end[resource_id]['machinename'] = machinename
+                        ssm_end[resource_id]['uid'] = uid
+                        ssm_end[resource_id]['gid'] = gid 
+                        ssm_end[resource_id]['cpucount']=cpucount
+                        ssm_end[resource_id]['vcpu'] = vcpu
+                        ssm_end[resource_id]['memory'] = memory
+                        ssm_end[resource_id]['imageid'] = imageid
+                        ssm_end[resource_id]['disk'] = disk
+                        ssm_end[resource_id]['starttime'] = starttime
+                        ssm_end[resource_id]['endtime'] = endtime
+                        ssm_end[resource_id]['state'] = state
+                        
+                except KeyError:
+                    ssm_end[resource_id]={}
                     ssm_end[resource_id]['timestamp'] = timestamp
                     ssm_end[resource_id]['vmuuid'] = vmuuid
                     ssm_end[resource_id]['machinename'] = machinename
                     ssm_end[resource_id]['uid'] = uid
                     ssm_end[resource_id]['gid'] = gid 
-                    ssm_end[resource_id]['cpucount']=cpucount
+                    ssm_end[resource_id]['cpucount'] = cpucount
                     ssm_end[resource_id]['vcpu'] = vcpu
                     ssm_end[resource_id]['memory'] = memory
                     ssm_end[resource_id]['imageid'] = imageid
@@ -221,60 +243,51 @@ def ana_received_cpu_data(mapping,report_groups,cpu_data,hide_names):
                     ssm_end[resource_id]['starttime'] = starttime
                     ssm_end[resource_id]['endtime'] = endtime
                     ssm_end[resource_id]['state'] = state
-                    
-            except KeyError:
-                ssm_end[resource_id]={}
-                ssm_end[resource_id]['timestamp'] = timestamp
-                ssm_end[resource_id]['vmuuid'] = vmuuid
-                ssm_end[resource_id]['machinename'] = machinename
-                ssm_end[resource_id]['uid'] = uid
-                ssm_end[resource_id]['gid'] = gid 
-                ssm_end[resource_id]['cpucount'] = cpucount
-                ssm_end[resource_id]['vcpu'] = vcpu
-                ssm_end[resource_id]['memory'] = memory
-                ssm_end[resource_id]['imageid'] = imageid
-                ssm_end[resource_id]['disk'] = disk
-                ssm_end[resource_id]['starttime'] = starttime
-                ssm_end[resource_id]['endtime'] = endtime
-                ssm_end[resource_id]['state'] = state
-                
+    except TypeError:
+        print >> sys.stderr, "ERROR: No CPU usage data information has been received"
+        exit(1)
+
 def ana_received_net_data(mapping,report_groups,net_data,hide_names):
     #
     # filter for start and end records
     #
-    for record in net_data:
-        gid = get_gid(mapping,report_groups,record['project_id'])
-        if (gid != 'unset'):
-            # memorize relevant data and find start and end record
-            resource_id = record['resource_metadata']['instance_id']
-            timestamp = record['timestamp']
-            counter_name = record['counter_name']
-            if record['counter_unit'] == 'B':
-                netcount = record['counter_volume']
-            else:
-                print >> sys.stderr, "ERROR: unknown counter unit type" + record['counter_unit'] 
-                
-            try: 
-                ssm_start[resource_id][counter_name]
-                if (timestamp < ssm_start[resource_id][counter_name]['timestamp']):
+    try:
+        for record in net_data:
+            gid = get_gid(mapping,report_groups,record['project_id'])
+            if (gid != 'unset'):
+                # memorize relevant data and find start and end record
+                resource_id = record['resource_metadata']['instance_id']
+                timestamp = record['timestamp']
+                counter_name = record['counter_name']
+                if record['counter_unit'] == 'B':
+                    netcount = record['counter_volume']
+                else:
+                    print >> sys.stderr, "ERROR: unknown counter unit type" + record['counter_unit'] 
+                    
+                try: 
+                    ssm_start[resource_id][counter_name]
+                    if (timestamp < ssm_start[resource_id][counter_name]['timestamp']):
+                        ssm_start[resource_id][counter_name]['timestamp'] = timestamp
+                        ssm_start[resource_id][counter_name]['counter_value'] = netcount
+                            
+                except KeyError:
+                    ssm_start[resource_id][counter_name]={}
                     ssm_start[resource_id][counter_name]['timestamp'] = timestamp
                     ssm_start[resource_id][counter_name]['counter_value'] = netcount
-
-            except KeyError:
-                ssm_start[resource_id][counter_name]={}
-                ssm_start[resource_id][counter_name]['timestamp'] = timestamp
-                ssm_start[resource_id][counter_name]['counter_value'] = netcount
-                
-            try:
-                ssm_end[resource_id][counter_name]
-                if (timestamp > ssm_end[resource_id][counter_name]['timestamp']):
+                    
+                try:
+                    ssm_end[resource_id][counter_name]
+                    if (timestamp > ssm_end[resource_id][counter_name]['timestamp']):
+                        ssm_end[resource_id][counter_name]['timestamp'] = timestamp
+                        ssm_end[resource_id][counter_name]['counter_value'] = netcount
+                        
+                except KeyError:
+                    ssm_end[resource_id][counter_name]={}
                     ssm_end[resource_id][counter_name]['timestamp'] = timestamp
                     ssm_end[resource_id][counter_name]['counter_value'] = netcount
-                    
-            except KeyError:
-                ssm_end[resource_id][counter_name]={}
-                ssm_end[resource_id][counter_name]['timestamp'] = timestamp
-                ssm_end[resource_id][counter_name]['counter_value'] = netcount
+    except TypeError:
+        print >> sys.stderr, "ERROR: No network usage data information has been received"
+        exit(1)
                 
 def PrintSSMRecords(sitename, verbose, debug):
     line = "APEL-cloud-message: %s\n" % "v0.2"
@@ -444,22 +457,37 @@ if (debug):
     print >> sys.stderr, json.dumps(keystone_response, indent=2)
     print >> sys.stderr, "reading cpu and net information from ceilometer"
 
+#
+# retrieve data and analyse
+#
+
+# cpu
+if (verbose):
+    print >> sys.stderr, "reading cpu_used records"
 cpu_used = receive_data(verbose,debug,keystone_response,start,end,'cpu')
-if (debug):
-    print >> sys.stderr, "read cpu_used records"
-
-net_in   = receive_data(verbose,debug,keystone_response,start,end,'network.incoming.bytes')
-if (debug):
-    print >> sys.stderr, "read net_in records"
-
-net_out  = receive_data(verbose,debug,keystone_response,start,end,'network.outgoing.bytes')
-if (debug):
-    print >> sys.stderr, "read net_out records"
-
+if (verbose):
+    print >> sys.stderr, "analysing cpu records"
 ana_received_cpu_data(mapping,report_groups,cpu_used,hide_names)
+
+# net in
+if (verbose):
+    print >> sys.stderr, "reading net_in records"
+net_in   = receive_data(verbose,debug,keystone_response,start,end,'network.incoming.bytes')
+if (verbose):
+    print >> sys.stderr, "analysing net_in records"
 ana_received_net_data(mapping,report_groups,net_in,hide_names)
+
+# net out
+if (verbose):
+    print >> sys.stderr, "read net_out records"
+net_out  = receive_data(verbose,debug,keystone_response,start,end,'network.outgoing.bytes')
+if (verbose):
+    print >> sys.stderr, "analysing net_out records"
 ana_received_net_data(mapping,report_groups,net_out,hide_names)
 
+#
+# print the result
+#
 records = PrintSSMRecords(sitename,verbose,debug)
 
 if (debug):
@@ -478,8 +506,6 @@ if (publish):
             if (p.wait() != 0):
                 print  >> sys.stderr, p
                 exit(1)
-            if (verbose):
-                print  >> sys.stderr, p
         except:
             print  >> sys.stderr, "ERROR: Failed to send the message"
             exit(1)

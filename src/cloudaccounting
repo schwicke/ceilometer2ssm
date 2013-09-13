@@ -37,14 +37,11 @@ args = shlex.split(command_line)
 try:
     p = subprocess.Popen(args)
     if (p.wait() != 0):
-        print  >> sys.stderr, p
+        print  >> sys.stderr, "ERROR: ceilometer2ssm failed to run properly"
         exit(1)
-        
-    if (verbose|debug):
-        print  >> sys.stderr, p
-            
+                    
 except:
     print  >> sys.stderr, command_line
-    print  >> sys.stderr, "ERROR: Failed to send the message"
+    print  >> sys.stderr, "ERROR: Failed to run the publication script"
     exit(1)
         
