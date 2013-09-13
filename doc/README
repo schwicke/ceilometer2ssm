@@ -1,0 +1,21 @@
+ceilometer2ssm
+==============
+
+This script serves as an interface between OpenStack Ceilometer and WLCG Apel accounting. The script connects to all Ceilometer instances reported by keystone, and creates SSM 
+records from the retrieved data. 
+
+CPU and network data are currently reported. Since these metrics are cumulative, only the latest record per instance is reported within the given time period. 
+
+If the -p option is given, the created SSM records will directly send to APEL.
+
+To get help:
+ceilometer2ssm -h 
+
+Configuration file:
+/etc/ceilometer2ssm.conf
+
+
+cloudaccounting
+===============
+
+This script is a wrapper for ceilometer2ssm which will create the SSM records from the previous day. It is run as a cron job once per day

@@ -1,13 +1,15 @@
-Summary: ceilomter to SSM2 interface
+Summary: OpenStack Ceilometer to SSM2 interface
 Name: ceilometer2ssm
 Version: 0.1.2
-Release: 1%{?dist}
-License: ASL2
-Group: PES
+Release: 2%{?dist}
+License: ASL 2.0
 Vendor: CERN, ASGC
+Group: Applications/Internet
 BuildArch: noarch
 BuildRoot:  %{_tmppath}/%{name}
-Source0: %{name}.tar.gz
+Url: https://github.com/schwicke/ceilometer2ssm
+#Source0: %{name}.tar.gz
+Source0: http://cern.ch/uschwick/software/ceilometer2ssm/%{version}/%{name}.tar.gz
 BuildRequires: automake
 BuildRequires: autoconf
 Requires: apel-ssm
@@ -15,20 +17,20 @@ Requires: python-dirq
 
 
 %description
-provides an interface between APEL and ceilometer
+provides an interface between APEL and OpenStack Ceilometer
 
 %prep
-%setup -n %{name}
-
-%build
+%setup -q -n %{name}
 ./autogen.sh
-./configure --prefix=$RPM_BUILD_ROOT
+
+%configure
+%build
 make
  
 %install
 [ -d $RPM_BUILD_ROOT ] && rm -rf $RPM_BUILD_ROOT
 mkdir $RPM_BUILD_ROOT
-make install
+make DESTDIR=%{buildroot} install
 
 %clean
 rm -rf $RPM_BUILD_ROOT
@@ -37,15 +39,15 @@ rm -rf $RPM_BUILD_ROOT
 %defattr(-,root,root)
 /usr/libexec/ceilometer2ssm
 /usr/libexec/cloudaccounting
-/etc/logrotate.d/cloudaccountinglogs
+%config(noreplace) /etc/logrotate.d/ceilometer2ssm
 %config(noreplace) /etc/cron.d/cloudaccounting.cron
 %config(noreplace) /etc/ceilometer2ssm.conf
-
-%post 
-
-%preun
+%doc /usr/share/doc/ceilometer2ssm/README
 
 %changelog
+* Fri Sep 13 2013 Ulrich Schwickerath <Ulrich.Schwickerath@cern.ch> -0.1.2-2
+- build patches only
+
 * Fri Sep 13 2013 Ulrich Schwickerath <Ulrich.Schwickerath@cern.ch> -0.1.2-1
 - add log rotation
 - introduce debugging flag
