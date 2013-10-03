@@ -2,12 +2,11 @@
 import httplib
 import urllib
 import json
-import pycurl
 import cStringIO
 import re
 import os
 import sys
-from pwd import getpwnam  
+from pwd import getpwnam
 import time
 from dateutil import parser
 import urlparse
@@ -22,14 +21,14 @@ ssm_end={}
 state_map = {
     # from https://wiki.egi.eu/wiki/Fedcloud-tf:WorkGroups:Scenario4
     "active": "started",
-    "build": "started", 
-    "deleted": "completed", 
+    "build": "started",
+    "deleted": "completed",
     "error": "error",
-    "hard_reboot": "started", 
-    "migrating": "started", 
-    "paused": "paused", 
+    "hard_reboot": "started",
+    "migrating": "started",
+    "paused": "paused",
     "reboot": "started",
-    "rebuild": "started", 
+    "rebuild": "started",
     "confirming_resize": "started",
     "rescue": "started",
     "resize": "started",
@@ -48,40 +47,43 @@ def read_config(filename):
     # read the mapping of project-id to accounting group from a file
     try:
         f = open(filename,"r")
-        try: 
+        try:
             result=json.loads(f.read())
             f.close
             return result
         except:
-            print  >> sys.stderr, 'ERROR: Cannot parse configuration file ' + filename
+            print >> sys.stderr, 'ERROR: Cannot parse configuration file ' + filename
             exit(1)
     except IOError:
-        print  >> sys.stderr, 'ERROR: Cannot open configuration file ' + filename
+        print >> sys.stderr, 'ERROR: Cannot open configuration file ' + filename
         exit(1)
         
 
 def auth_keystone(keystoneserver, username, password, tenant, cacert,debug ):
     auth='{"auth":{"passwordCredentials":{"username":"'+username+'","password":"'+password+'"}, "tenantName":"'+tenant+'"}}'
-    buf = cStringIO.StringIO()
+    auth_server = urlparse.urlparse(keystoneserver)[1]
+    auth_protocol = urlparse.urlparse(keystoneserver)[0]
+    auth_path = urlparse.urlparse(keystoneserver)[2]
+    if auth_protocol == "https":
+     Newconn = httplib.HTTPSConnection
+    else:
+     Newconn = httplib.HTTPConnection
 
-    c = pycurl.Curl()
-    c.setopt(c.URL, keystoneserver.encode('ascii','ignore'))
-    c.setopt(c.FOLLOWLOCATION, 1)
-    c.setopt(c.MAXREDIRS, 5)
-    c.setopt(c.WRITEFUNCTION, buf.write)
-    c.setopt(c.CAINFO,cacert.encode('ascii','ignore'))
-    c.setopt(c.HTTPHEADER, ['Accept: application/json', 'Content-Type: application/json'])
-    c.setopt(c.POSTFIELDS, auth.encode('ascii','ignore'))
+    header = {"Content-type": "application/json"}
+    req = "POST"
+    get_auth_conn = Newconn( auth_server )
     try:
-        c.perform()
-        answer=buf.getvalue()
-        buf.close()
-        if (debug):
-            print >> sys.stderr, "Keystone authentication succeeded"
-        return answer
-    except pycurl.error, error:
-        errno, errstr = error
-        print  >> sys.stderr, 'An error occurred while doing the initial authentication: ', errstr 
+        get_auth_conn.request( req, auth_path, auth, header  )
+        answer = get_auth_conn.getresponse()
+        if answer.status == 200:
+         if (debug):
+           print >> sys.stderr, "Keystone authentication succeeded"
+         return answer.read()
+        else:
+         print >> sys.stderr, "Failed to get keystone token from " + keystone_server
+         print answer.reason
+    except:
+        print >> sys.stderr, 'An error occurred while connecting to keystone server'
         exit(1)
 
 def receive_data(verbose,debug,keystone_response,start,end,meter):
@@ -92,6 +94,11 @@ def receive_data(verbose,debug,keystone_response,start,end,meter):
         if (endpoint["name"] == "ceilometer"):
             for ceilometers in endpoint["endpoints"]:
                 ceilometer_server = urlparse.urlparse(ceilometers["publicURL"])[1]
+                ceilometer_protocol = urlparse.urlparse(ceilometers["publicURL"])[0]
+                if ceilometer_protocol == "https":
+                 NEWconn = httplib.HTTPSConnection
+                else:
+                 NEWconn = httplib.HTTPConnection
                 query = {"q":[{"field":"timestamp","op":"ge","value":start},{"field": "timestamp","op":"le","value":end}] }
                 data = json.dumps(query)
                 header = {"Content-type": "application/json", "X-Auth-Token": tokenid.encode('ascii','ignore')}
@@ -100,10 +107,10 @@ def receive_data(verbose,debug,keystone_response,start,end,meter):
                     print >> sys.stderr, "Query ceilometer server at: " + ceilometer_server
                     print >> sys.stderr, "Query it with: :" + json.dumps(query , indent=2)
                 try:
-                    get_auth_conn = httplib.HTTPConnection( ceilometer_server )
+                    get_cm_conn = NEWconn( ceilometer_server )
                     try:
-                        get_auth_conn.request( req, uri,  body=data,   headers=header  )
-                        res = get_auth_conn.getresponse()
+                        get_cm_conn.request( req, uri, body=data, headers=header )
+                        res = get_cm_conn.getresponse()
                         if res.status == 200:
                             return json.loads( res.read() )
                     except:
@@ -117,20 +124,20 @@ def get_uid(username):
     try:
         uid = getpwnam(username).pw_uid
     except:
-        print  >> sys.stderr, "Cannot find uid for" + username
-    return uid 
+        print >> sys.stderr, "Cannot find uid for" + username
+    return uid
 
 def get_gid(mapping,report_groups,project):
     # return the accounting group
     try:
         gid = mapping[project]
-        try: 
+        try:
             report_groups.index(gid)
         except:
             gid = 'unset'
     except:
         gid = 'unset'
-    return gid 
+    return gid
 
 
 def ana_received_cpu_data(mapping,report_groups,cpu_data,hide_names):
@@ -161,7 +168,7 @@ def ana_received_cpu_data(mapping,report_groups,cpu_data,hide_names):
                 except:
                     starttime = "NULL"
 
-                try: 
+                try:
                     endtime = parser.parse(record['resource_metadata']['deleted_at']).strftime("%s")
                 except:
                     endtime = "NULL"
@@ -169,7 +176,7 @@ def ana_received_cpu_data(mapping,report_groups,cpu_data,hide_names):
                 if record['counter_unit'] == 'ns':
                     cpucount = record['counter_volume']
                 else:
-                    print >> sys.stderr, "ERROR: unknown counter unit type" + record['counter_unit'] 
+                    print >> sys.stderr, "ERROR: unknown counter unit type" + record['counter_unit']
 
                 if (hide_names):
                     machinename = record['resource_metadata']['name']
@@ -178,14 +185,14 @@ def ana_received_cpu_data(mapping,report_groups,cpu_data,hide_names):
                     except:
                         uid="nobody"
 
-                try: 
+                try:
                     ssm_start[resource_id]
                     if (timestamp < ssm_start[resource_id]['timestamp']):
                         ssm_start[resource_id]['timestamp'] = timestamp
                         ssm_start[resource_id]['vmuuid'] = vmuuid
                         ssm_start[resource_id]['machinename'] = machinename
                         ssm_start[resource_id]['uid'] = uid
-                        ssm_start[resource_id]['gid'] = gid 
+                        ssm_start[resource_id]['gid'] = gid
                         ssm_start[resource_id]['cpucount']
                         ssm_start[resource_id]['vcpu'] = vcpu
                         ssm_start[resource_id]['memory'] = memory
@@ -201,7 +208,7 @@ def ana_received_cpu_data(mapping,report_groups,cpu_data,hide_names):
                     ssm_start[resource_id]['vmuuid'] = vmuuid
                     ssm_start[resource_id]['machinename'] = machinename
                     ssm_start[resource_id]['uid'] = uid
-                    ssm_start[resource_id]['gid'] = gid 
+                    ssm_start[resource_id]['gid'] = gid
                     ssm_start[resource_id]['cpucount']=cpucount
                     ssm_start[resource_id]['vcpu'] = vcpu
                     ssm_start[resource_id]['memory'] = memory
@@ -218,7 +225,7 @@ def ana_received_cpu_data(mapping,report_groups,cpu_data,hide_names):
                         ssm_end[resource_id]['vmuuid'] = vmuuid
                         ssm_end[resource_id]['machinename'] = machinename
                         ssm_end[resource_id]['uid'] = uid
-                        ssm_end[resource_id]['gid'] = gid 
+                        ssm_end[resource_id]['gid'] = gid
                         ssm_end[resource_id]['cpucount']=cpucount
                         ssm_end[resource_id]['vcpu'] = vcpu
                         ssm_end[resource_id]['memory'] = memory
@@ -234,7 +241,7 @@ def ana_received_cpu_data(mapping,report_groups,cpu_data,hide_names):
                     ssm_end[resource_id]['vmuuid'] = vmuuid
                     ssm_end[resource_id]['machinename'] = machinename
                     ssm_end[resource_id]['uid'] = uid
-                    ssm_end[resource_id]['gid'] = gid 
+                    ssm_end[resource_id]['gid'] = gid
                     ssm_end[resource_id]['cpucount'] = cpucount
                     ssm_end[resource_id]['vcpu'] = vcpu
                     ssm_end[resource_id]['memory'] = memory
@@ -262,9 +269,9 @@ def ana_received_net_data(mapping,report_groups,net_data,hide_names):
                 if record['counter_unit'] == 'B':
                     netcount = record['counter_volume']
                 else:
-                    print >> sys.stderr, "ERROR: unknown counter unit type" + record['counter_unit'] 
+                    print >> sys.stderr, "ERROR: unknown counter unit type" + record['counter_unit']
                     
-                try: 
+                try:
                     ssm_start[resource_id][counter_name]
                     if (timestamp < ssm_start[resource_id][counter_name]['timestamp']):
                         ssm_start[resource_id][counter_name]['timestamp'] = timestamp
@@ -294,7 +301,7 @@ def PrintSSMRecords(sitename, verbose, debug):
     for resource_id in ssm_end.keys():
         if ssm_end[resource_id]:
             if (verbose):
-                print >> sys.stderr, "INFO: reported period: from " + ssm_start[resource_id]['timestamp'] + " to " + ssm_end[resource_id]['timestamp'] 
+                print >> sys.stderr, "INFO: reported period: from " + ssm_start[resource_id]['timestamp'] + " to " + ssm_end[resource_id]['timestamp']
             line += "VMUUID: %s\n" % ssm_end[resource_id]['vmuuid']
             line += "SiteName: %s\n" % sitename
             line += "MachineName: %s\n" % ssm_end[resource_id]['machinename']
@@ -318,9 +325,9 @@ def PrintSSMRecords(sitename, verbose, debug):
                     print >> sys.stderr,"DEBUG: endtime is not set. Skipping"
             line += "CpuDuration: %d\n" % int(0.5+float(ssm_end[resource_id]['cpucount'])/1000000000.0)
             try:
-                line += "CpuCount: %d\n" %  int(ssm_end[resource_id]['vcpu'])
+                line += "CpuCount: %d\n" % int(ssm_end[resource_id]['vcpu'])
             except:
-                line += "CpuCount: %d\n" %  0
+                line += "CpuCount: %d\n" % 0
                 if (debug):
                     print >> sys.stderr, "DEBUG: cannot get cpu count. Skipping"
                     print >> sys.stderr, ssm_end[resource_id]['vcpu']
@@ -344,7 +351,7 @@ def PrintSSMRecords(sitename, verbose, debug):
                 line += "Disk: %d\n" % int(ssm_end[resource_id]['disk'])
             except:
                 if (debug):
-                    print >> sys.stderr, "DEBUG: disk  is not set. Skipping"
+                    print >> sys.stderr, "DEBUG: disk is not set. Skipping"
             # to be added later on
             # line += "GlobalUserName: %s\n" % "NULL"
             # line += "%s\n" % "FQAN: NULL"
@@ -369,7 +376,7 @@ parser.add_argument('-c', '--config', dest='configfile', action='store', help='c
 parser.add_argument('-a', '--apelssmconfig',dest='apelssmconf',action='store', help='location of the apel-ssm configuration file', default='/etc/apel/sender.cfg')
 
 args = parser.parse_args()
-start =  args.start
+start = args.start
 end = args.end
 publish = args.publish
 verbose = args.verbose
@@ -382,13 +389,13 @@ if (debug):
     print >> sys.stderr, "Debug mode is enabled: will not actually publish but just retrieve the data and report!"
 
 if (verbose) :
-    print   >> sys.stderr, "Verbose output will be created"
-    print   >> sys.stderr, "Reading configuration from "+configfile
-    print   >> sys.stderr, "Records are processed between "+start+" and "+end
+    print >> sys.stderr, "Verbose output will be created"
+    print >> sys.stderr, "Reading configuration from "+configfile
+    print >> sys.stderr, "Records are processed between "+start+" and "+end
     if (publish):
-        print   >> sys.stderr, "Resulting records will be published to APEL"
+        print >> sys.stderr, "Resulting records will be published to APEL"
     else:
-        print   >> sys.stderr, "Will not try to publish the result"
+        print >> sys.stderr, "Will not try to publish the result"
 
 # read mapping from file
 config = read_config(configfile)
@@ -401,7 +408,7 @@ try:
     secrets = config["secrets"]
 except:
     if (verbose):
-        print   >> sys.stderr, "No secrets defined in the configuration file"
+        print >> sys.stderr, "No secrets defined in the configuration file"
     
 try:
     os_auth_url=secrets["os_auth_url"]
@@ -409,7 +416,7 @@ except:
     try:
         os_auth_url=os.environ['OS_AUTH_URL']
     except KeyError:
-        print  >> sys.stderr, "ERROR: OS_AUTH_URL is not set"
+        print >> sys.stderr, "ERROR: OS_AUTH_URL is not set"
         exit(1)
 try:
     os_username=secrets["os_username"]
@@ -417,7 +424,7 @@ except:
     try:
         os_username=os.environ['OS_USERNAME']
     except KeyError:
-        print  >> sys.stderr, "ERROR: OS_USERNAME is not set"
+        print >> sys.stderr, "ERROR: OS_USERNAME is not set"
         exit(1)
 
 try:
@@ -426,7 +433,7 @@ except:
     try:
         os_password=os.environ['OS_PASSWORD']
     except KeyError:
-        print  >> sys.stderr, "ERROR: OS_PASSWORD is not set"
+        print >> sys.stderr, "ERROR: OS_PASSWORD is not set"
         exit(1)
 
 try:
@@ -435,7 +442,7 @@ except:
     try:
         os_tenant_name=os.environ['OS_TENANT_NAME']
     except KeyError:
-        print  >> sys.stderr, "ERROR: OS_TENANT_NAME is not set"
+        print >> sys.stderr, "ERROR: OS_TENANT_NAME is not set"
         exit(1)
 
 try:
@@ -444,11 +451,11 @@ except:
     try:
         os_cacert=os.environ['OS_CACERT']
     except KeyError:
-        print  >> sys.stderr, "ERROR: OS_CACERT is not set"
+        print >> sys.stderr, "ERROR: OS_CACERT is not set"
         exit(1)
 
 if (debug):
-    print  >> sys.stderr, "Getting authentication token from keystone"
+    print >> sys.stderr, "Getting authentication token from keystone"
 
 keystone_response = auth_keystone(os_auth_url+'/tokens',os_username,os_password,os_tenant_name,os_cacert,debug)
 
@@ -472,7 +479,7 @@ ana_received_cpu_data(mapping,report_groups,cpu_used,hide_names)
 # net in
 if (verbose):
     print >> sys.stderr, "reading net_in records"
-net_in   = receive_data(verbose,debug,keystone_response,start,end,'network.incoming.bytes')
+net_in = receive_data(verbose,debug,keystone_response,start,end,'network.incoming.bytes')
 if (verbose):
     print >> sys.stderr, "analysing net_in records"
 ana_received_net_data(mapping,report_groups,net_in,hide_names)
@@ -480,7 +487,7 @@ ana_received_net_data(mapping,report_groups,net_in,hide_names)
 # net out
 if (verbose):
     print >> sys.stderr, "read net_out records"
-net_out  = receive_data(verbose,debug,keystone_response,start,end,'network.outgoing.bytes')
+net_out = receive_data(verbose,debug,keystone_response,start,end,'network.outgoing.bytes')
 if (verbose):
     print >> sys.stderr, "analysing net_out records"
 ana_received_net_data(mapping,report_groups,net_out,hide_names)
@@ -504,9 +511,9 @@ if (publish):
         try:
             p = subprocess.Popen(args)
             if (p.wait() != 0):
-                print  >> sys.stderr, p
+                print >> sys.stderr, p
                 exit(1)
         except:
-            print  >> sys.stderr, "ERROR: Failed to send the message"
+            print >> sys.stderr, "ERROR: Failed to send the message"
             exit(1)
             
