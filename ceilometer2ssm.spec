@@ -1,7 +1,7 @@
 Summary: OpenStack Ceilometer to SSM2 interface
 Name: ceilometer2ssm
-Version: 0.1.2
-Release: 2%{?dist}
+Version: 0.1.3
+Release: 1%{?dist}
 License: ASL 2.0
 Vendor: CERN, ASGC
 Group: Applications/Internet
@@ -45,6 +45,12 @@ rm -rf $RPM_BUILD_ROOT
 %doc /usr/share/doc/ceilometer2ssm/README
 
 %changelog
+* Mon Oct 07 2013 Ulrich Schwickerath <Ulrich.Schwickerath@cern.ch> -0.1.3-1
+- merge with ASGC code
+- code reshuffling
+- add accounting group concept
+- add code which dumps unfiltered ceilometer data for local displaing
+
 * Fri Sep 13 2013 Ulrich Schwickerath <Ulrich.Schwickerath@cern.ch> -0.1.2-2
 - build patches only
 
