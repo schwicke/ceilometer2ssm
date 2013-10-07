@@ -78,7 +78,7 @@ def auth_keystone(keystoneserver, username, password, tenant, cacert,debug ):
          return answer.read()
         else:
          print >> sys.stderr, "Failed to get keystone token from " + keystone_server
-         print answer.reason
+         print >> sys.stderr, answer.reason
     except:
         print >> sys.stderr, 'An error occurred while connecting to keystone server'
         exit(1)
@@ -155,7 +155,6 @@ def ana_received_cpu_data(filter, mapping,report_groups,cpu_data,hide_names):
     try:
         for record in cpu_data:
             gid = get_accgroup(filter, mapping,report_groups,record['project_id'])
-            print >> sys.stderr, "ACC group is: "+str(gid)
             if (gid == 'unset' or (filter and (gid == 'unknown'))):
                 pass
             else:
@@ -251,7 +250,7 @@ def ana_received_net_data(ssm_record, filter, mapping,report_groups,net_data,hid
                 # memorize relevant data and find start and end record
                 resource_id = record['resource_metadata']['instance_id']
                 if (debug):
-                    print "processing cpu info for resource id:" + resource_id
+                    print >> sys.stderr, "processing cpu info for resource id:" + resource_id
                 timestamp = record['timestamp']
                 counter_name = record['counter_name']
                 if record['counter_unit'] == 'B':
@@ -284,10 +283,10 @@ def PrintSSMRecords(ssm, sitename, verbose, debug):
                 try:
                     print >> sys.stderr, "INFO: reported period: from " + ssm[resource_id]['periodstart'] + " to " + ssm[resource_id]['periodend']
                 except KeyError:
-                    print "--------------------"
-                    print "cannot find periodstart for resource "+resource_id
-                    print  json.dumps(ssm[resource_id], indent=2)
-                    print "--------------------"
+                    print >> sys.stderr,"--------------------"
+                    print >> sys.stderr,"cannot find periodstart for resource "+resource_id
+                    print >> sys.stderr, json.dumps(ssm[resource_id], indent=2)
+                    print >> sys.stderr,"--------------------"
             line += "VMUUID: %s\n" % ssm[resource_id]['vmuuid']
             line += "SiteName: %s\n" % sitename
             line += "MachineName: %s\n" % ssm[resource_id]['machinename']
@@ -355,9 +354,6 @@ def CreateReport(ssm,verbose,debug):
     report += "| *Accounting group* | *VMs* | *CPUs* | *disk* | *cpu time* | *memory* | *net in* | *net out* | \n"
     by_accgroup = {}
     for resource_id in ssm.keys():
-        print json.dumps(ssm[resource_id], indent=2)
-        #print resource_id + " " + ssm[resource_id]['gid'] + " " + ssm[resource_id]['machinename']
-        #print  json.dumps(by_accgroup, indent=2)
         try: 
             by_accgroup[ssm[resource_id]['gid']]
         except KeyError:
@@ -406,9 +402,9 @@ def CreateReport(ssm,verbose,debug):
 
 
     for accgroup in by_accgroup.keys():
-        report += " | "+accgroup+" | "+str(by_accgroup[accgroup]['nvms'])+" | "+str(by_accgroup[accgroup]['ncores'])+" | "+str(by_accgroup[accgroup]['disk'])+" | "+str(by_accgroup[accgroup]['cpucount']) +" | "+str(by_accgroup[accgroup]['memory']) +" | "+str(by_accgroup[accgroup]['net_in']) +" | "+str(by_accgroup[accgroup]['net_out'])+"|\n"
+        report += "| "+accgroup+" | "+str(by_accgroup[accgroup]['nvms'])+" | "+str(by_accgroup[accgroup]['ncores'])+" | "+str(by_accgroup[accgroup]['disk'])+" | "+str(by_accgroup[accgroup]['cpucount']) +" | "+str(by_accgroup[accgroup]['memory']) +" | "+str(by_accgroup[accgroup]['net_in']) +" | "+str(by_accgroup[accgroup]['net_out'])+"|\n"
 
-    print report
+    return report
 
 
 
@@ -420,6 +416,7 @@ parser.add_argument('-s', '--start', dest='start', action='store',help='start ti
 parser.add_argument('-e', '--end', dest='end', action='store', help='end time for the publicatin',default="2013-09-20T23:59:59")
 parser.add_argument('-c', '--config', dest='configfile', action='store', help='ceilometer2ssm configuration file location',default="/etc/ceilometer2ssm.conf")
 parser.add_argument('-a', '--apelssmconfig',dest='apelssmconf',action='store', help='location of the apel-ssm configuration file', default='/etc/apel/sender.cfg')
+parser.add_argument('-l', '--localreport',dest='localreport',action='store_true', help='Create also a local report in Twiki format', default=False)
 
 args = parser.parse_args()
 start = args.start
@@ -429,6 +426,7 @@ verbose = args.verbose
 debug = args.debug
 configfile = args.configfile
 apelssmconf = args.apelssmconf
+localreport = args.localreport
 
 if (debug):
     verbose = True
@@ -533,17 +531,18 @@ ssm_filtered = ana_received_net_data(ssm_filtered, filter, mapping, report_group
 # print the result
 #
 records = PrintSSMRecords(ssm_filtered, sitename, verbose, debug)
-if (debug):
-    print records
 
-if (verbose):
-    print >> sys.stderr, "analysing all data"
-filter = 0
+if (localreport):
+    filter = 0
+    if (verbose):
+        print >> sys.stderr, "analysing all data"
 
-ssm_full = ana_received_cpu_data(filter, mapping, report_groups, cpu_used, hide_names)
-ssm_full = ana_received_net_data(ssm_full, filter, mapping, report_groups, net_in, hide_names)
-ssm_full = ana_received_net_data(ssm_full, filter, mapping, report_groups, net_out, hide_names)
-CreateReport(ssm_full,verbose,debug)
+
+    ssm_full = ana_received_cpu_data(filter, mapping, report_groups, cpu_used, hide_names)
+    ssm_full = ana_received_net_data(ssm_full, filter, mapping, report_groups, net_in, hide_names)
+    ssm_full = ana_received_net_data(ssm_full, filter, mapping, report_groups, net_out, hide_names)
+    twiki_report = CreateReport(ssm_full,verbose,debug)
+    print twiki_report
 
 if (publish):
     dirq = QueueSimple('/var/spool/apel/outgoing/')
