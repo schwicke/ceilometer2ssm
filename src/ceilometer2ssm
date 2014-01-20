@@ -121,7 +121,7 @@ def get_uid(username):
     try:
         uid = getpwnam(username).pw_uid
     except:
-        print  >> sys.stderr, "Cannot find uid for" + username
+        print  >> sys.stderr, "Cannot find uid for " + username
         uid = getpwnam('nobody').pw_uid
     return uid 
 
@@ -147,97 +147,90 @@ def get_tenant(mapping,project):
     return tenant 
 
 
-def ana_received_cpu_data(filter, mapping,report_groups,cpu_data,hide_names):
+def ana_received_cpu_data(verbose,debug,filter, mapping,report_groups,cpu_data,hide_names):
     #
     # filter for start and end records
     #
     ssm_record = {}
     try:
         for record in cpu_data:
+            resource_id = record['resource_id']
+            timestamp = record['timestamp']
             gid = get_accgroup(filter, mapping,report_groups,record['project_id'])
             if (gid == 'unset' or (filter and (gid == 'unknown'))):
                 pass
             else:
                 # memorize relevant data and find start and end record
-                tenant = get_tenant(mapping,record['project_id'])
-                resource_id = record['resource_id']
-                timestamp = record['timestamp']
+                #print >> sys.stderr, "Debug: input record = " + json.dumps(record , indent=2)
+                try:
+                    ssm_record[resource_id]
+                except KeyError:
+                    ssm_record[resource_id]={}
+                    ssm_record[resource_id]['periodstart'] = timestamp
+                    ssm_record[resource_id]['periodend'] = timestamp
+                    ssm_record[resource_id]['machinename'] = 'unknown'
+                    ssm_record[resource_id]['state'] = 'unknown'
+                    ssm_record[resource_id]['imageid'] = 'unknown'
+
+                if (timestamp < ssm_record[resource_id]['periodstart']):
+                    ssm_record[resource_id]['periodstart'] = timestamp
+                if (timestamp > ssm_record[resource_id]['periodend']):
+                    ssm_record[resource_id]['periodend'] = timestamp
+
+                ssm_record[resource_id]['tenant'] = get_tenant(mapping,record['project_id'])
                 vmuuid = record['resource_metadata']['host']
-                machinename = record['resource_metadata']['display_name']
                 uid = record['user_id']
                 memory = record['resource_metadata']['memory_mb']
                 vcpu = record['resource_metadata']['vcpus']
-                imageid = record['resource_metadata']['image_ref']
+                try:
+                    ssm_record[resource_id]['imageid'] = record['resource_metadata']['image_meta.description']
+                except:
+                    pass
                 disk = record['resource_metadata']['disk_gb']
                 try:
-                    state=statemap[record['resource_metadata']['state']]
+                    ssm_record[resource_id]['state'] = state_map[record['resource_metadata']['state']]
                 except:
-                    state="running"
-   
+                    pass
                 try:
-                    starttime = parser.parse(record['resource_metadata']['created_at']).strftime("%s")
+                    ssm_record[resource_id]['starttime'] = parser.parse(record['resource_metadata']['created_at']).strftime("%s")
                 except:
-                    starttime = "NULL"
-
+                    pass
                 try:
-                    endtime = parser.parse(record['resource_metadata']['deleted_at']).strftime("%s")
+                    ssm_record[resource_id]['endtime'] = parser.parse(record['resource_metadata']['deleted_at']).strftime("%s")
                 except:
-                    endtime = "NULL"
-
+                    pass
                 if record['counter_unit'] == 'ns':
                     cpucount = record['counter_volume']
                 else:
                     print >> sys.stderr, "ERROR: unknown counter unit type" + record['counter_unit']
-
+                    
                 if (hide_names):
-                    machinename = record['resource_metadata']['name']
+                    try:
+                        ssm_record[resource_id]['machinename'] = record['resource_metadata']['instance_id']
+                    except:
+                        pass
                     try:
                         uid=str(get_uid(uid))
                     except:
                         uid="nobody"
-                    
-                try:
-                    ssm_record[resource_id]
-                    if (timestamp > ssm_record[resource_id]['periodend']):
-                        ssm_record[resource_id]['tenant'] = tenant
-                        ssm_record[resource_id]['periodend'] = timestamp
-                        ssm_record[resource_id]['vmuuid'] = vmuuid
-                        ssm_record[resource_id]['machinename'] = machinename
-                        ssm_record[resource_id]['uid'] = uid
-                        ssm_record[resource_id]['gid'] = gid 
-                        ssm_record[resource_id]['cpucount']=cpucount
-                        ssm_record[resource_id]['vcpu'] = vcpu
-                        ssm_record[resource_id]['memory'] = memory
-                        ssm_record[resource_id]['imageid'] = imageid
-                        ssm_record[resource_id]['disk'] = disk
-                        ssm_record[resource_id]['starttime'] = starttime
-                        ssm_record[resource_id]['endtime'] = endtime
-                        ssm_record[resource_id]['state'] = state
-                    if (timestamp < ssm_record[resource_id]['periodstart']):
-                        ssm_record[resource_id]['periodstart'] = timestamp
-                        
-                except KeyError:
-                    ssm_record[resource_id]={}
-                    ssm_record[resource_id]['periodend'] = timestamp
-                    ssm_record[resource_id]['periodstart'] = timestamp
-                    ssm_record[resource_id]['vmuuid'] = vmuuid
-                    ssm_record[resource_id]['machinename'] = machinename
-                    ssm_record[resource_id]['uid'] = uid
-                    ssm_record[resource_id]['gid'] = gid 
-                    ssm_record[resource_id]['cpucount'] = cpucount
-                    ssm_record[resource_id]['vcpu'] = vcpu
-                    ssm_record[resource_id]['memory'] = memory
-                    ssm_record[resource_id]['imageid'] = imageid
-                    ssm_record[resource_id]['disk'] = disk
-                    ssm_record[resource_id]['starttime'] = starttime
-                    ssm_record[resource_id]['endtime'] = endtime
-                    ssm_record[resource_id]['state'] = state
+                else:
+                    try:
+                        ssm_record[resource_id]['machinename'] = record['resource_metadata']['display_name']
+                    except:
+                        pass
+                ssm_record[resource_id]['vmuuid'] = vmuuid
+                ssm_record[resource_id]['uid'] = uid
+                ssm_record[resource_id]['gid'] = gid 
+                ssm_record[resource_id]['cpucount']=cpucount
+                ssm_record[resource_id]['vcpu'] = vcpu
+                ssm_record[resource_id]['memory'] = memory
+                ssm_record[resource_id]['disk'] = disk
     except TypeError:
         print >> sys.stderr, "ERROR: No CPU usage data information has been received"
         exit(1)
     return ssm_record
 
-def ana_received_net_data(ssm_record, filter, mapping,report_groups,net_data,hide_names):
+def ana_received_net_data(verbose,debug,ssm_record, filter, mapping,report_groups,net_data,hide_names):
     #
     # filter for start and end records
     #
@@ -408,17 +401,18 @@ def CreateReport(ssm,verbose,debug):
 
 
 
-parser = argparse.ArgumentParser(description='Publish ceilometer records to APEL using SSM2')
-parser.add_argument('-p', '--publish', dest='publish', action='store_true', help='directly publish the data',default=False)
-parser.add_argument('-v', '--verbose', dest='verbose', action='store_true', help='be verbose',default=False)
-parser.add_argument('-d', '--debug', dest='debug', action='store_true', help='produce debugging output',default=False)
-parser.add_argument('-s', '--start', dest='start', action='store',help='start time for the publication',default="2013-09-20T00:00:00")
-parser.add_argument('-e', '--end', dest='end', action='store', help='end time for the publicatin',default="2013-09-20T23:59:59")
-parser.add_argument('-c', '--config', dest='configfile', action='store', help='ceilometer2ssm configuration file location',default="/etc/ceilometer2ssm.conf")
-parser.add_argument('-a', '--apelssmconfig',dest='apelssmconf',action='store', help='location of the apel-ssm configuration file', default='/etc/apel/sender.cfg')
-parser.add_argument('-l', '--localreport',dest='localreport',action='store_true', help='Create also a local report in Twiki format', default=False)
+aparser = argparse.ArgumentParser(description='Publish ceilometer records to APEL using SSM2')
+aparser.add_argument('-p', '--publish', dest='publish', action='store_true', help='directly publish the data',default=False)
+aparser.add_argument('-v', '--verbose', dest='verbose', action='store_true', help='be verbose',default=False)
+aparser.add_argument('-d', '--debug', dest='debug', action='store_true', help='produce debugging output',default=False)
+aparser.add_argument('-s', '--start', dest='start', action='store',help='start time for the publication',default="2013-09-20T00:00:00")
+aparser.add_argument('-e', '--end', dest='end', action='store', help='end time for the publicatin',default="2013-09-20T23:59:59")
+aparser.add_argument('-c', '--config', dest='configfile', action='store', help='ceilometer2ssm configuration file location',default="/etc/ceilometer2ssm.conf")
+aparser.add_argument('-a', '--apelssmconfig',dest='apelssmconf',action='store', help='location of the apel-ssm configuration file', default='/etc/apel/sender.cfg')
+aparser.add_argument('-l', '--localreport',dest='localreport',action='store_true', help='Create also a local report in Twiki format. Implies --nofilter', default=False)
+aparser.add_argument('-n', '--nofilter',dest='nofilter',action='store_true', help='Do not filter the output for groups', default=False)
 
-args = parser.parse_args()
+args = aparser.parse_args()
 start = args.start
 end = args.end
 publish = args.publish
@@ -427,6 +421,7 @@ debug = args.debug
 configfile = args.configfile
 apelssmconf = args.apelssmconf
 localreport = args.localreport
+nofilter = args.nofilter
 
 if (debug):
     verbose = True
@@ -512,8 +507,6 @@ if (debug):
 # retrieve data and analyse
 #
 
-# filter for groups to be reported
-filter = 1
 # cpu
 if (verbose):
     print >> sys.stderr, "reading data from ceilometer"
@@ -523,24 +516,26 @@ net_out  = receive_data(verbose,debug,keystone_response,start,end,'network.outgo
 
 if (verbose):
     print >> sys.stderr, "analysing data"
-ssm_filtered = ana_received_cpu_data(filter, mapping,report_groups,cpu_used,hide_names)
-ssm_filtered = ana_received_net_data(ssm_filtered, filter, mapping, report_groups, net_in, hide_names)
-ssm_filtered = ana_received_net_data(ssm_filtered, filter, mapping, report_groups, net_out, hide_names)
+ssm_filtered = ana_received_cpu_data(verbose,debug,nofilter, mapping,report_groups,cpu_used,hide_names)
+ssm_filtered = ana_received_net_data(verbose,debug,ssm_filtered, nofilter, mapping, report_groups, net_in, hide_names)
+ssm_filtered = ana_received_net_data(verbose,debug,ssm_filtered, nofilter, mapping, report_groups, net_out, hide_names)
 
 #
 # print the result
 #
 records = PrintSSMRecords(ssm_filtered, sitename, verbose, debug)
+if verbose:
+    print >> sys.stderr, records
 
 if (localreport):
-    filter = 0
+    nofilter = True
     if (verbose):
         print >> sys.stderr, "analysing all data"
 
 
-    ssm_full = ana_received_cpu_data(filter, mapping, report_groups, cpu_used, hide_names)
-    ssm_full = ana_received_net_data(ssm_full, filter, mapping, report_groups, net_in, hide_names)
-    ssm_full = ana_received_net_data(ssm_full, filter, mapping, report_groups, net_out, hide_names)
+    ssm_full = ana_received_cpu_data(verbose,debug,nofilter, mapping, report_groups, cpu_used, hide_names)
+    ssm_full = ana_received_net_data(verbose,debug,ssm_full, nofilter, mapping, report_groups, net_in, hide_names)
+    ssm_full = ana_received_net_data(verbose,debug,ssm_full, nofilter, mapping, report_groups, net_out, hide_names)
     twiki_report = CreateReport(ssm_full,verbose,debug)
     print twiki_report
 
