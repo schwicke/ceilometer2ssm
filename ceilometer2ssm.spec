@@ -1,7 +1,7 @@
 Summary: OpenStack Ceilometer to SSM2 interface
 Name: ceilometer2ssm
-Version: 0.1.4
-Release: 2%{?dist}
+Version: 0.2.0
+Release: 1%{?dist}
 License: ASL 2.0
 Vendor: CERN, ASGC
 Group: Applications/Internet
@@ -45,6 +45,11 @@ rm -rf $RPM_BUILD_ROOT
 %doc /usr/share/doc/ceilometer2ssm/README
 
 %changelog
+* Mon Mar 5 2014 Ulrich Schwickerath <Ulrich.Schwickerath@cern.ch> -0.2.0-1
+- cern branch
+- move back to pyCurl for keystone auth (due to issues with httplib)
+- use keystone V3
+
 * Mon Jan 21 2014 Ulrich Schwickerath <Ulrich.Schwickerath@cern.ch> -0.1.4-1
 - havana patches
 - multiple bug fixes and code reshuffling

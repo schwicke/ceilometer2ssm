@@ -632,7 +632,13 @@ if (debug):
 
 for tenant in tenants["tenants"]:
     tenant_id = tenant["id"]
-    
+    tenant_name = tenant["name"]
+    group = tenant_name.split(" ")[0]
+    mapping[tenant_id] = {"group" : group, "name": tenant_name}
+    if (debug):
+        print "Adding tenant ID "+tenant_id+" name: "+tenant_name + " => "+group  
+
+
 # get a skoped token for the first tenant 
 try:
     tenant_id=tenants["tenants"][0]["id"]   
@@ -650,6 +656,7 @@ if (debug):
 if (debug):
     print >> sys.stderr, "reading data from ceilometer"
 cpu_used = receive_data(verbose,debug,auth,token,start,end,'cpu')
+#print  json.dumps(cpu_used, indent=2)
 net_in   = receive_data(verbose,debug,auth,token,start,end,'network.incoming.bytes')
 net_out  = receive_data(verbose,debug,auth,token,start,end,'network.outgoing.bytes')
 
