@@ -219,7 +219,7 @@ def receive_data(verbose,debug,keystone_response,tokenid,start,end,meter):
                                 return json.loads( res.read() )
                         except:
                             print >> sys.stderr, "Failed to query ceilometer server at " + ceilometers
-                            exit(1)
+                            sys.exit(1)
                     except:
                         print >> sys.stderr, "failed to create the connection object"
 
@@ -254,11 +254,10 @@ def get_tenant(mapping,project):
     return tenant 
 
 
-def ana_received_cpu_data(verbose,debug,filter, mapping,report_groups,cpu_data,hide_names):
+def ana_received_cpu_data(verbose,debug,ssm_record,filter, mapping,report_groups,cpu_data,hide_names):
     #
     # filter for start and end records
     #
-    ssm_record = {}
     try:
         for record in cpu_data:
             resource_id = record['resource_id']
@@ -324,8 +323,11 @@ def ana_received_cpu_data(verbose,debug,filter, mapping,report_groups,cpu_data,h
                             cpucount = record['counter_volume']
                         else:
                             print >> sys.stderr, "ERROR: unknown counter unit type" + record['counter_unit']
-                        
+            
+                        if (debug):
+                            print >>  sys.stderr,"DEBUG: machine name info is:" +  record['resource_metadata']['instance_id'] + " and " + record['resource_metadata']['display_name']
                         if (hide_names):
+                            print >> sys.stderr,"DEBUG: hide names is true"
                             try:
                                 ssm_record[resource_id]['machinename'] = record['resource_metadata']['instance_id']
                             except:
@@ -333,12 +335,15 @@ def ana_received_cpu_data(verbose,debug,filter, mapping,report_groups,cpu_data,h
                             try:
                                 uid=str(get_uid(uid))
                             except:
-                                uid="nobody"
+                                uid="99"
                         else:
+                            print >> sys.stderr,"DEBUG: hide names is true"
                             try:
                                 ssm_record[resource_id]['machinename'] = record['resource_metadata']['display_name']
                             except:
                                 pass
+
+                        print >> sys.stderr,"DEBUG: machinename set to "+ ssm_record[resource_id]['machinename']
                         ssm_record[resource_id]['uid'] = uid
                         ssm_record[resource_id]['gid'] = gid 
                         ssm_record[resource_id]['cpucount']=cpucount
@@ -346,8 +351,7 @@ def ana_received_cpu_data(verbose,debug,filter, mapping,report_groups,cpu_data,h
                         ssm_record[resource_id]['memory'] = memory
                         ssm_record[resource_id]['disk'] = disk
     except TypeError:
-        print >> sys.stderr, "ERROR: No CPU usage data information has been received"
-        exit(1)
+        print >> sys.stderr, "WARNING: No CPU usage data information has been received"
     return ssm_record
 
 def ana_received_net_data(verbose,debug,ssm_record, filter, mapping,report_groups,net_data,hide_names):
@@ -382,8 +386,7 @@ def ana_received_net_data(verbose,debug,ssm_record, filter, mapping,report_group
                     ssm_record[resource_id][counter_name]['periodend'] = timestamp
                     ssm_record[resource_id][counter_name]['counter_value'] = netcount
     except TypeError:
-        print >> sys.stderr, "ERROR: No network usage data information has been received"
-        exit(1)
+        print >> sys.stderr, "WARNING: No network usage data information has been received"
     return ssm_record
 
 def PrintSSMRecords(ssm, sitename, verbose, debug):
@@ -585,7 +588,7 @@ except:
         os_auth_url=os.environ['OS_AUTH_URL']
     except KeyError:
         print >> sys.stderr, "ERROR: OS_AUTH_URL is not set"
-        exit(1)
+        sys.exit(1)
 try:
     os_username=secrets["os_username"]
 except:
@@ -593,7 +596,7 @@ except:
         os_username=os.environ['OS_USERNAME']
     except KeyError:
         print >> sys.stderr, "ERROR: OS_USERNAME is not set"
-        exit(1)
+        sys.exit(1)
 
 try:
     os_password=secrets["os_password"]
@@ -602,7 +605,7 @@ except:
         os_password=os.environ['OS_PASSWORD']
     except KeyError:
         print >> sys.stderr, "ERROR: OS_PASSWORD is not set"
-        exit(1)
+        sys.exit(1)
 
 try:
     os_tenant_name=secrets["os_tenant_name"]
@@ -611,7 +614,7 @@ except:
         os_tenant_name=os.environ['OS_TENANT_NAME']
     except KeyError:
         print >> sys.stderr, "ERROR: OS_TENANT_NAME is not set"
-        exit(1)
+        sys.exit(1)
 
 if (debug):
     print >> sys.stderr, "Getting authentication token from keystone"
@@ -630,6 +633,9 @@ tenants = GetTenantsFromKeystone(verbose,debug,os_auth_url,init_auth,init_token)
 if (debug):
     print >> sys.stderr, json.dumps(tenants, indent=2)
 
+ssm_filtered = {}
+ssm_full = {}
+
 for tenant in tenants["tenants"]:
     tenant_id = tenant["id"]
     tenant_name = tenant["name"]
@@ -638,52 +644,48 @@ for tenant in tenants["tenants"]:
     if (debug):
         print "Adding tenant ID "+tenant_id+" name: "+tenant_name + " => "+group  
 
+# get a skoped token for the current tenant 
+    (token, auth)   =  auth_keystone_v3(os_auth_url,os_username,os_password,"default",tenant_id,init_token,debug)
+    
+    # get cpu and network data
+    if (debug):
+        print >> sys.stderr, "reading data from ceilometer"
+    cpu_used = receive_data(verbose,debug,auth,token,start,end,'cpu')
+    net_in   = receive_data(verbose,debug,auth,token,start,end,'network.incoming.bytes')
+    net_out  = receive_data(verbose,debug,auth,token,start,end,'network.outgoing.bytes')
+    #print  json.dumps(cpu_used, indent=2)
 
-# get a skoped token for the first tenant 
-try:
-    tenant_id=tenants["tenants"][0]["id"]   
-except:
-    print >> sys.stderr, "no tenant found!"
-    sys.exit(1)
+    if (verbose):
+        print >> sys.stderr, "analysing data"
+    ssm_filtered = ana_received_cpu_data(verbose,debug,ssm_filtered, nofilter, mapping, report_groups, cpu_used,hide_names)
+    ssm_filtered = ana_received_net_data(verbose,debug,ssm_filtered, nofilter, mapping, report_groups, net_in,  hide_names)
+    ssm_filtered = ana_received_net_data(verbose,debug,ssm_filtered, nofilter, mapping, report_groups, net_out, hide_names)
 
-# re-auth to get end points
-(token, auth)   =  auth_keystone_v3(os_auth_url,os_username,os_password,"default",tenant_id,init_token,debug)
-if (debug):
-    print >>sys.stderr, json.dumps(json.loads(auth), indent=2)
-
-#sys.exit(0)
-# get cpu and network data
-if (debug):
-    print >> sys.stderr, "reading data from ceilometer"
-cpu_used = receive_data(verbose,debug,auth,token,start,end,'cpu')
-#print  json.dumps(cpu_used, indent=2)
-net_in   = receive_data(verbose,debug,auth,token,start,end,'network.incoming.bytes')
-net_out  = receive_data(verbose,debug,auth,token,start,end,'network.outgoing.bytes')
-
-if (verbose):
-    print >> sys.stderr, "analysing data"
-ssm_filtered = ana_received_cpu_data(verbose,debug,nofilter, mapping,report_groups,cpu_used,hide_names)
-ssm_filtered = ana_received_net_data(verbose,debug,ssm_filtered, nofilter, mapping, report_groups, net_in, hide_names)
-ssm_filtered = ana_received_net_data(verbose,debug,ssm_filtered, nofilter, mapping, report_groups, net_out, hide_names)
+    if (localreport):
+        nofilter = True
+        if (verbose):
+            print >> sys.stderr, "analysing all data"
+        ssm_full = ana_received_cpu_data(verbose,debug,ssm_full, nofilter, mapping, report_groups, cpu_used, hide_names)
+        ssm_full = ana_received_net_data(verbose,debug,ssm_full, nofilter, mapping, report_groups, net_in, hide_names)
+        ssm_full = ana_received_net_data(verbose,debug,ssm_full, nofilter, mapping, report_groups, net_out, hide_names)
+        if (debug):
+            records = PrintSSMRecords(ssm_filtered, sitename, verbose, debug)
+            print >> sys.stderr, records
+            twiki_report = CreateReport(ssm_full,verbose,debug)
+            print twiki_report
+            sys.exit(0)
 
 #
-# print the result
+# print the results
 #
+
+if (localreport):
+    twiki_report = CreateReport(ssm_full,verbose,debug)
+    print twiki_report
+
 records = PrintSSMRecords(ssm_filtered, sitename, verbose, debug)
 if verbose:
     print >> sys.stderr, records
-
-if (localreport):
-    nofilter = True
-    if (verbose):
-        print >> sys.stderr, "analysing all data"
-
-
-    ssm_full = ana_received_cpu_data(verbose,debug,nofilter, mapping, report_groups, cpu_used, hide_names)
-    ssm_full = ana_received_net_data(verbose,debug,ssm_full, nofilter, mapping, report_groups, net_in, hide_names)
-    ssm_full = ana_received_net_data(verbose,debug,ssm_full, nofilter, mapping, report_groups, net_out, hide_names)
-    twiki_report = CreateReport(ssm_full,verbose,debug)
-    print twiki_report
 
 if (publish):
     dirq = QueueSimple('/var/spool/apel/outgoing/')
@@ -697,8 +699,8 @@ if (publish):
             p = subprocess.Popen(args)
             if (p.wait() != 0):
                 print >> sys.stderr, p
-                exit(1)
+                sys.exit(1)
         except:
             print >> sys.stderr, "ERROR: Failed to send the message"
-            exit(1)
+            sys.exit(1)
             
