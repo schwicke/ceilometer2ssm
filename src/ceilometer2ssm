@@ -3,6 +3,7 @@ import httplib
 import urllib
 import json
 import cStringIO
+import pycurl
 import re
 import os
 import sys
@@ -55,66 +56,172 @@ def read_config(filename):
         print >> sys.stderr, 'ERROR: Cannot open configuration file ' + filename
         exit(1)
         
+def auth_keystone(keystoneserver, username, password, tenant, debug ):
+    auth='{"auth":{"passwordCredentials":{"username":"'+username+'","password":"'+password+'"}}}'
+    print tenant
+    buf = cStringIO.StringIO()
+    c = pycurl.Curl()
+    c.setopt(c.URL, keystoneserver.encode('ascii','ignore'))
+    c.setopt(c.FOLLOWLOCATION, 1)
+    c.setopt(c.MAXREDIRS, 5)
+    c.setopt(c.WRITEFUNCTION, buf.write)
+    #c.setopt(c.CAINFO,cacert.encode('ascii','ignore'))
+    c.setopt(c.HTTPHEADER, ['Accept: application/json', 'Content-Type: application/json'])
+    c.setopt(c.POSTFIELDS, auth.encode('ascii','ignore'))
+    try:
+        c.perform()
+        answer=buf.getvalue()
+        buf.close()
+        if (debug):
+            print >> sys.stderr, "Keystone authentication succeeded"
+        return answer
+    except pycurl.error, error:
+        errno, errstr = error
+        print  >> sys.stderr, 'An error occurred while doing the initial authentication: ', errstr 
+        exit(1)
 
-def auth_keystone(keystoneserver, username, password, tenant, cacert,debug ):
-    auth='{"auth":{"passwordCredentials":{"username":"'+username+'","password":"'+password+'"}, "tenantName":"'+tenant+'"}}'
+def auth_keystone_v3(keystoneserver, username, password, domain, tenant, token, debug ):
+
+    if (token):
+        auth='{"auth":{"scope": {"project": {"id":"'+tenant+'"}},"identity":{"methods":["token"],"token":{"id": "'+token+'"}}}}'
+    else:
+        auth='{"auth":{"identity":{"methods":["password"],"password":{"user": {"name": "'+username+'", "password":"'+password+'","domain":{"name":"'+domain+'"}}}}}}'
     auth_server = urlparse.urlparse(keystoneserver)[1]
     auth_protocol = urlparse.urlparse(keystoneserver)[0]
     auth_path = urlparse.urlparse(keystoneserver)[2]
-    if auth_protocol == "https":
-     Newconn = httplib.HTTPSConnection
-    else:
-     Newconn = httplib.HTTPConnection
+    auth_port = auth_server.split(":")[1]
+    endpoint = auth_protocol+"://"+auth_server+"/v3/auth/tokens"
 
-    header = {"Content-type": "application/json"}
-    req = "POST"
-    get_auth_conn = Newconn( auth_server )
+    buf    = cStringIO.StringIO()
+    header = cStringIO.StringIO()
+    c = pycurl.Curl()
+    c.setopt(c.URL, endpoint.encode('ascii','ignore'))
+    c.setopt(c.FOLLOWLOCATION, 1)
+    c.setopt(c.MAXREDIRS, 5)
+    c.setopt(c.WRITEFUNCTION, buf.write)
+    c.setopt(c.HEADERFUNCTION, header.write)
+    #c.setopt(c.CAINFO,cacert.encode('ascii','ignore'))
+    c.setopt(c.HTTPHEADER, ['Accept: application/json', 'Content-Type: application/json'])
+    c.setopt(c.POSTFIELDS, auth.encode('ascii','ignore'))
     try:
-        get_auth_conn.request( req, auth_path, auth, header  )
-        answer = get_auth_conn.getresponse()
-        if answer.status == 200:
-         if (debug):
-           print >> sys.stderr, "Keystone authentication succeeded"
-         return answer.read()
-        else:
-         print >> sys.stderr, "Failed to get keystone token from " + keystone_server
-         print >> sys.stderr, answer.reason
+        c.perform()
+        answer=buf.getvalue()
+        response = header.getvalue()
+        headers = dict(re.findall(r"(?P<name>.*?): (?P<value>.*?)\r\n", response))
+        token = headers["X-Subject-Token"]
+        buf.close()
+        header.close()
+        if (debug):
+            print >> sys.stderr, "Keystone authentication succeeded"
+        return token, answer
+    except pycurl.error, error:
+        errno, errstr = error
+        print  >> sys.stderr, 'An error occurred while doing the initial authentication: ', errstr 
+        exit(1)
+
+def auth_keystone2(keystoneserver, username, password, tenant, debug ):
+    auth='\'{"auth":{"passwordCredentials":{"username":"'+username+'","password":"'+password+'"}}}\''
+    auth_server = urlparse.urlparse(keystoneserver)[1]
+    auth_protocol = urlparse.urlparse(keystoneserver)[0]
+    auth_path = urlparse.urlparse(keystoneserver)[2]
+    auth_port = auth_server.split(":")[1]
+
+    if auth_protocol == "https":
+        print "using https"
+        Newconn = httplib.HTTPSConnection
+    else:
+        Newconn = httplib.HTTPConnection
+    header = "'Content-type: application/json'"
+    req = "POST"
+    try:
+        get_auth_conn = Newconn( auth_server )
+        get_auth_conn.set_debuglevel(2)
+    except:
+        print >> sys.stderr, "cannot connect to keystone server "+auth_server
+        exit(1)
+    try:
+        get_auth_conn.request( req, auth_path, auth, header)
+        try:
+            answer = get_auth_conn.getresponse()
+            if (debug):
+                print >> sys.stderr, "keystone response: "+answer
+            if answer.status == 200:
+                if (debug):
+                    print >> sys.stderr, "Keystone authentication succeeded"
+                return answer.read()
+            else:
+                print >> sys.stderr, "Failed to get keystone token from " + keystone_server
+                print >> sys.stderr, answer.reason
+        except:
+            print >> sys.stderr, 'An error occurred while reading keystone response' + answer
+            exit(2)
     except:
         print >> sys.stderr, 'An error occurred while connecting to keystone server'
         exit(1)
 
-def receive_data(verbose,debug,keystone_response,start,end,meter):
+def GetTenantsFromKeystone(verbose,debug,auth_url,keystone_response,tokenid):
     decoded = json.loads(keystone_response)
-    tokenid=decoded["access"]["token"]["id"]
+    keystone_protocol = urlparse.urlparse(auth_url)[0]
+    keystone_server   = urlparse.urlparse(auth_url)[1]
+    keystone_port     = urlparse.urlparse(auth_url)[2]
+    uri='/v2.0/tenants'
+    queryurl = keystone_protocol + "://"+keystone_server
+    if keystone_protocol == "https":
+        NEWconn = httplib.HTTPSConnection
+    else:
+        NEWconn = httplib.HTTPConnection
+    query = {}
+    data = json.dumps(query)
+    header = {"Content-type": "application/json", "X-Auth-Token": tokenid.encode('ascii','ignore')}
+    req = 'GET'
+    if (debug):
+        print >> sys.stderr, "Query keystone server at: " + queryurl
+        print >> sys.stderr, "Query it with: :" + json.dumps(query , indent=2)
+    try:
+        get_cm_conn = NEWconn(keystone_server)
+        try:
+            get_cm_conn.request( req, uri, body=data, headers=header )
+            res = get_cm_conn.getresponse()
+            if res.status == 200:
+                return json.loads( res.read() )
+        except:
+            print >> sys.stderr, "Failed to query keystone server at " + ceilometers
+            exit(1)
+    except:
+        print >> sys.stderr, "failed to create the connection object"
+
+def receive_data(verbose,debug,keystone_response,tokenid,start,end,meter):
+    decoded = json.loads(keystone_response)
     uri='/v2/meters/%s' % meter
-    for endpoint in decoded["access"]["serviceCatalog"]:
-        if (endpoint["name"] == "ceilometer"):
+    for endpoint in decoded["token"]["catalog"]:
+        if (endpoint["type"] == "metering"):
             for ceilometers in endpoint["endpoints"]:
-                ceilometer_server = urlparse.urlparse(ceilometers["publicURL"])[1]
-                ceilometer_protocol = urlparse.urlparse(ceilometers["publicURL"])[0]
-                if ceilometer_protocol == "https":
-                 NEWconn = httplib.HTTPSConnection
-                else:
-                 NEWconn = httplib.HTTPConnection
-                query = {"q":[{"field":"timestamp","op":"ge","value":start},{"field": "timestamp","op":"le","value":end}] }
-                data = json.dumps(query)
-                header = {"Content-type": "application/json", "X-Auth-Token": tokenid.encode('ascii','ignore')}
-                req = 'GET'
-                if (debug):
-                    print >> sys.stderr, "Query ceilometer server at: " + ceilometer_server
-                    print >> sys.stderr, "Query it with: :" + json.dumps(query , indent=2)
-                try:
-                    get_cm_conn = NEWconn( ceilometer_server )
+                if ceilometers["interface"] == "public":
+                    ceilometer_server = urlparse.urlparse(ceilometers["url"])[1]
+                    ceilometer_protocol = urlparse.urlparse(ceilometers["url"])[0]
+                    if ceilometer_protocol == "https":
+                        NEWconn = httplib.HTTPSConnection
+                    else:
+                        NEWconn = httplib.HTTPConnection
+                        query = {"q":[{"field":"timestamp","op":"ge","value":start},{"field": "timestamp","op":"le","value":end}] }
+                        data = json.dumps(query)
+                        header = {"Content-type": "application/json", "X-Auth-Token": tokenid.encode('ascii','ignore')}
+                        req = 'GET'
+                        if (debug):
+                            print >> sys.stderr, "Query ceilometer server at: " + ceilometer_server
+                            print >> sys.stderr, "Query it with: :" + json.dumps(query , indent=2)
                     try:
-                        get_cm_conn.request( req, uri, body=data, headers=header )
-                        res = get_cm_conn.getresponse()
-                        if res.status == 200:
-                            return json.loads( res.read() )
+                        get_cm_conn = NEWconn( ceilometer_server )
+                        try:
+                            get_cm_conn.request( req, uri, body=data, headers=header )
+                            res = get_cm_conn.getresponse()
+                            if res.status == 200:
+                                return json.loads( res.read() )
+                        except:
+                            print >> sys.stderr, "Failed to query ceilometer server at " + ceilometers
+                            exit(1)
                     except:
-                        print >> sys.stderr, "Failed to query ceilometer server at " + ceilometers
-                        exit(1)
-                except:
-                    print >> sys.stderr, "failed to create the connection object"
+                        print >> sys.stderr, "failed to create the connection object"
 
 def get_uid(username):
     uid = 0
@@ -158,7 +265,7 @@ def ana_received_cpu_data(verbose,debug,filter, mapping,report_groups,cpu_data,h
             timestamp = parser.parse(record['timestamp']).strftime("%s")
             gid = get_accgroup(filter, mapping,report_groups,record['project_id'])
             if debug:
-                print "processing resource_id "+resource_id+ " in project "+record['project_id']+ " accounting group: "+gid
+                print >>sys.stderr, "processing resource_id "+resource_id+ " in project "+record['project_id']+ " accounting group: "+gid
             if (gid == 'unset' or (filter and (gid == 'NULL'))):
                 if debug:
                     print >> sys.stderr, "Debug: skipped input record = " + json.dumps(record , indent=2)   
@@ -506,35 +613,45 @@ except:
         print >> sys.stderr, "ERROR: OS_TENANT_NAME is not set"
         exit(1)
 
-try:
-    os_cacert=secrets["os_cacert"]
-except:
-    try:
-        os_cacert=os.environ['OS_CACERT']
-    except KeyError:
-        print >> sys.stderr, "ERROR: OS_CACERT is not set"
-        exit(1)
-
 if (debug):
     print >> sys.stderr, "Getting authentication token from keystone"
 
-keystone_response = auth_keystone(os_auth_url+'/tokens',os_username,os_password,os_tenant_name,os_cacert,debug)
+#auth  = auth_keystone(os_auth_url+'/tokens',os_username,os_password,os_tenant_name,debug)
+(init_token, init_auth)   =  auth_keystone_v3(os_auth_url,os_username,os_password,"default","default","",debug)
+
 
 if (debug):
     print >> sys.stderr, "Keystone response:"
-    print >> sys.stderr, json.dumps(keystone_response, indent=2)
-    print >> sys.stderr, "reading cpu and net information from ceilometer"
+    print >> sys.stderr, "token:" + init_token
+    print >> sys.stderr, "auth:"
+    print >> sys.stderr, json.dumps(init_auth, indent=2)
 
-#
-# retrieve data and analyse
-#
+tenants = GetTenantsFromKeystone(verbose,debug,os_auth_url,init_auth,init_token)
+if (debug):
+    print >> sys.stderr, json.dumps(tenants, indent=2)
 
-# cpu
-if (verbose):
+for tenant in tenants["tenants"]:
+    tenant_id = tenant["id"]
+    
+# get a skoped token for the first tenant 
+try:
+    tenant_id=tenants["tenants"][0]["id"]   
+except:
+    print >> sys.stderr, "no tenant found!"
+    sys.exit(1)
+
+# re-auth to get end points
+(token, auth)   =  auth_keystone_v3(os_auth_url,os_username,os_password,"default",tenant_id,init_token,debug)
+if (debug):
+    print >>sys.stderr, json.dumps(json.loads(auth), indent=2)
+
+#sys.exit(0)
+# get cpu and network data
+if (debug):
     print >> sys.stderr, "reading data from ceilometer"
-cpu_used = receive_data(verbose,debug,keystone_response,start,end,'cpu')
-net_in   = receive_data(verbose,debug,keystone_response,start,end,'network.incoming.bytes')
-net_out  = receive_data(verbose,debug,keystone_response,start,end,'network.outgoing.bytes')
+cpu_used = receive_data(verbose,debug,auth,token,start,end,'cpu')
+net_in   = receive_data(verbose,debug,auth,token,start,end,'network.incoming.bytes')
+net_out  = receive_data(verbose,debug,auth,token,start,end,'network.outgoing.bytes')
 
 if (verbose):
     print >> sys.stderr, "analysing data"
