@@ -454,52 +454,53 @@ if __name__ == '__main__':
     report_groups = config['report_groups']
     hide_names = config['hide_names']
 
-    try:
+    if 'secrets' in config:
         secrets = config['secrets']
-    except:
+    else:
         logging.info('No secrets defined in the configuration file')
     
-    try:
+    if 'os_auth_url' in secrets:
         os_auth_url = secrets['os_auth_url']
-    except:
-        try:
+    else:
+        if 'OS_AUTH_URL' in os.environ:
             os_auth_url = os.environ['OS_AUTH_URL']
-        except KeyError:
+        else:
             logging.error('OS_AUTH_URL is not set')
             sys.exit(1)
-    try:
+    
+    if 'os_username' in secrets:
         os_username = secrets['os_username']
-    except:
-        try:
+    else:
+        if 'OS_USERNAME' in os.environ:
             os_username = os.environ['OS_USERNAME']
-        except KeyError:
+        else:
             logging.error('OS_USERNAME is not set')
             sys.exit(1)
 
-    try:
+    if 'os_password' in secrets:
         os_password = secrets['os_password']
-    except:
-        try:
+    else:
+        if 'OS_PASSWORD' in os.environ:
             os_password = os.environ['OS_PASSWORD']
-        except KeyError:
+        else:
             logging.error('OS_PASSWORD is not set')
             sys.exit(1)
 
-    try:
+    if 'os_tenant_name' in secrets:
         os_tenant_name = secrets['os_tenant_name']
-    except:
-        try:
+    else:
+        if 'OS_TENANT_NAME' in os.environ:
             os_tenant_name = os.environ['OS_TENANT_NAME']
-        except KeyError:
+        else:
             logging.error('OS_TENANT_NAME is not set')
             sys.exit(1)
 
-    try:
+    if 'os_cacert' in secrets:
         os_cacert = secrets['os_cacert']
-    except:
-        try:
+    else:
+        if 'OS_CACERT' in os.environ:
             os_cacert = os.environ['OS_CACERT']
-        except KeyError:
+        else:
             logging.error('OS_CACERT is not set')
             sys.exit(1)
 
