@@ -218,7 +218,7 @@ def ana_received_cpu_data(verbose, debug, filter, mapping, report_groups, cpu_da
                         if record['counter_unit'] == 'ns':
                             cpucount = record['counter_volume']
                         else:
-                            print >> sys.stderr, "ERROR: unknown counter unit type" + record['counter_unit']
+                            logging.error("unknown counter unit type" + record['counter_unit'])
                         
                         if (hide_names):
                             try:
@@ -241,7 +241,7 @@ def ana_received_cpu_data(verbose, debug, filter, mapping, report_groups, cpu_da
                         ssm_record[resource_id]['memory'] = memory
                         ssm_record[resource_id]['disk'] = disk
     except TypeError:
-        print >> sys.stderr, "ERROR: No CPU usage data information has been received"
+        logging.error("No CPU usage data information has been received")
         exit(1)
     return ssm_record
 
