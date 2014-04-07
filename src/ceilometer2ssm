@@ -19,26 +19,26 @@ from dirq.QueueSimple import QueueSimple
 
 state_map = {
     # from https://wiki.egi.eu/wiki/Fedcloud-tf:WorkGroups:Scenario4
-    "active": "started",
-    "build": "started",
-    "deleted": "completed",
-    "error": "error",
-    "hard_reboot": "started",
-    "migrating": "started",
-    "paused": "paused",
-    "reboot": "started",
-    "rebuild": "started",
-    "confirming_resize": "started",
-    "rescue": "started",
-    "resize": "started",
-    "revert_resize": "started",
-    "password": "started",
-    "verify_resize": "started",
-    "shutoff": "completed",
-    "suspended": "suspended",
-    "terminated": "completed",
-    "stopped": "completed",
-    "saving": "started"
+    'active': 'started',
+    'build': 'started',
+    'deleted': 'completed',
+    'error': 'error',
+    'hard_reboot': 'started',
+    'migrating': 'started',
+    'paused': 'paused',
+    'reboot': 'started',
+    'rebuild': 'started',
+    'confirming_resize': 'started',
+    'rescue': 'started',
+    'resize': 'started',
+    'revert_resize': 'started',
+    'password': 'started',
+    'verify_resize': 'started',
+    'shutoff': 'completed',
+    'suspended': 'suspended',
+    'terminated': 'completed',
+    'stopped': 'completed',
+    'saving': 'started'
     }
 
 
