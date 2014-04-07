@@ -88,7 +88,7 @@ def receive_data(keystone_response, start, end, meter):
    tokenid = decoded['access']['token']['id']
    uri = '/v2/meters/%s' % meter
    for endpoint in decoded['access']['serviceCatalog']:
-      if (endpoint['name'] == 'ceilometer'):
+      if endpoint['name'] == 'ceilometer':
          for ceilometers in endpoint['endpoints']:
             ceilometer_server = urlparse.urlparse(ceilometers['publicURL'])[1]
             ceilometer_protocol = urlparse.urlparse(ceilometers['publicURL'])[0]
