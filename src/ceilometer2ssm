@@ -6,15 +6,16 @@ import cStringIO
 import re
 import os
 import sys
-from pwd import getpwnam  
-from dateutil import parser
 import urlparse
-from dirq.QueueSimple import QueueSimple
 import argparse
 import subprocess
 import shlex
-from time import localtime, strftime
+import logging
 
+from time import localtime, strftime
+from pwd import getpwnam  
+from dateutil import parser
+from dirq.QueueSimple import QueueSimple
 state_map = {
     # from https://wiki.egi.eu/wiki/Fedcloud-tf:WorkGroups:Scenario4
     "active": "started",
