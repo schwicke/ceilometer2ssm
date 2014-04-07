@@ -282,12 +282,12 @@ def PrintSSMRecords(ssm, sitename, verbose, debug):
     for resource_id in ssm.keys():
         if ssm[resource_id]:
             try:
-               logging.info("reported period: from " + ssm[resource_id]['periodstart'] + " to " + ssm[resource_id]['periodend'])
+               logging.info("reported period: from %s to %s" % (ssm[resource_id]['periodstart'], ssm[resource_id]['periodend']))
             except KeyError:
-               logging.error("--------------------")
-               logging.error("cannot find periodstart for resource " + resource_id)
+               logging.error('--------------------')
+               logging.error("cannot find periodstart for resource %s" % resource_id)
                logging.error(json.dumps(ssm[resource_id], indent=2))
-               logging.error("--------------------")
+               logging.error('--------------------')
             line += "VMUUID: %s\n" % ssm[resource_id]['vmuuid']
             line += "SiteName: %s\n" % sitename
             line += "MachineName: %s\n" % ssm[resource_id]['machinename']
@@ -303,7 +303,7 @@ def PrintSSMRecords(ssm, sitename, verbose, debug):
                 line += "StartTime: %d\n" % int(ssm[resource_id]['starttime'])
             except:
                 line += "StartTime: %d\n" % 0
-                logging.debug("Starttime is not set. Skipping")
+                logging.debug('Starttime is not set. Skipping')
             try:
                 endtime = int(ssm[resource_id]['endtime'])
             except:
@@ -325,26 +325,26 @@ def PrintSSMRecords(ssm, sitename, verbose, debug):
                 line += "CpuCount: %d\n" % int(ssm[resource_id]['vcpu'])
             except:
                 line += "CpuCount: %d\n" % 0
-                logging.debug("Cannot get cpu count. Skipping")
+                logging.debug('Cannot get cpu count. Skipping')
                 logging.debug(ssm[resource_id]['vcpu'])
-            line += "%s\n" % "NetworkType: NULL"
+            line += "%s\n" % 'NetworkType: NULL'
             try:
                 line += "NetworkInbound: %d\n" % int(0.5 + float(ssm[resource_id]['network.incoming.bytes']['counter_value']) / 1073741824.0)
             except:
-                logging.debug("Inbound traffic is not set. Skipping")
+                logging.debug('Inbound traffic is not set. Skipping')
             try:
                 line += "NetworkOutbound: %s\n" % int(0.5 + float(ssm[resource_id]['network.outgoing.bytes']['counter_value']) / 1073741824.0)
             except :
-                logging.debug("Outbound traffic is not set. Skipping")
+                logging.debug('Outbound traffic is not set. Skipping')
             try:
                 line += "Memory: %d\n" % int(ssm[resource_id]['memory'])
             except :
-                logging.debug("Memory is not set. Skipping")
+                logging.debug('Memory is not set. Skipping')
                 logging.debug(ssm[resource_id]['memory'])
             try:
                 line += "Disk: %d\n" % int(ssm[resource_id]['disk'])
             except:
-                logging.debug("Disk is not set. Skipping")
+                logging.debug('Disk is not set. Skipping')
             # to be added later on
             # line += "GlobalUserName: %s\n" % "NULL"
             # line += "%s\n" % "FQAN: NULL"
