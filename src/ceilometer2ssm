@@ -58,7 +58,7 @@ def read_config(filename):
         exit(1)
         
 
-def auth_keystone(keystoneserver, username, password, tenant, cacert, debug):
+def auth_keystone(keystoneserver, username, password, tenant, cacert):
     auth = '{"auth":{"passwordCredentials":{"username":"%s", "password":"%s"}, "tenantName":"%s"}}' % (username, password, tenant)
     auth_server = urlparse.urlparse(keystoneserver)[1]
     auth_protocol = urlparse.urlparse(keystoneserver)[0]
@@ -84,7 +84,7 @@ def auth_keystone(keystoneserver, username, password, tenant, cacert, debug):
         logging.error('An error occurred while connecting to keystone server')
         exit(1)
 
-def receive_data(verbose, debug, keystone_response, start, end, meter):
+def receive_data(keystone_response, start, end, meter):
     decoded = json.loads(keystone_response)
     tokenid = decoded['access']['token']['id']
     uri = '/v2/meters/%s' % meter
@@ -158,7 +158,7 @@ def get_tenant(mapping, project):
     return tenant 
 
 
-def ana_received_cpu_data(verbose, debug, filter, mapping, report_groups, cpu_data, hide_names):
+def ana_received_cpu_data(filter, mapping, report_groups, cpu_data, hide_names):
     #
     # filter for start and end records
     #
@@ -250,7 +250,7 @@ def ana_received_cpu_data(verbose, debug, filter, mapping, report_groups, cpu_da
         exit(1)
     return ssm_record
 
-def ana_received_net_data(verbose, debug, ssm_record, filter, mapping, report_groups, net_data, hide_names):
+def ana_received_net_data(ssm_record, filter, mapping, report_groups, net_data, hide_names):
     #
     # filter for start and end records
     #
@@ -286,7 +286,7 @@ def ana_received_net_data(verbose, debug, ssm_record, filter, mapping, report_gr
         exit(1)
     return ssm_record
 
-def PrintSSMRecords(ssm, sitename, verbose, debug):
+def PrintSSMRecords(ssm, sitename):
     line = "APEL-cloud-message: %s\n" % "v0.2"
     for resource_id in ssm.keys():
         if ssm[resource_id]:
@@ -364,7 +364,7 @@ def PrintSSMRecords(ssm, sitename, verbose, debug):
             line += "%s\n" % "%%"
     return line
 
-def CreateReport(ssm, verbose, debug):
+def CreateReport(ssm):
     report = "Last Update: %s\n" % strftime("%a, %d %b %Y %H:%M:%S", localtime())
     report += '| *Accounting group* | *VMs* | *CPUs* | *disk* | *cpu time* | *memory* | *net in* | *net out* | \n'
     by_accgroup = {}
@@ -520,7 +520,7 @@ if __name__ == '__main__':
     logging.debug('Getting authentication token from keystone')
 
     auth_keytone_first_parameter = "%s/tokens" % os_auth_url
-    keystone_response = auth_keystone(auth_keytone_first_parameter, os_username, os_password, os_tenant_name, os_cacert, debug)
+    keystone_response = auth_keystone(auth_keytone_first_parameter, os_username, os_password, os_tenant_name, os_cacert)
 
     logging.debug('Keystone response:')
     logging.debug("%s" % json.dumps(keystone_response, indent=2))
@@ -532,19 +532,19 @@ if __name__ == '__main__':
 
     # cpu
     logging.info('reading data from ceilometer')
-    cpu_used = receive_data(verbose, debug, keystone_response, start, end, 'cpu')
-    net_in = receive_data(verbose, debug, keystone_response, start, end, 'network.incoming.bytes')
-    net_out = receive_data(verbose, debug, keystone_response, start, end, 'network.outgoing.bytes')
+    cpu_used = receive_data(keystone_response, start, end, 'cpu')
+    net_in = receive_data(keystone_response, start, end, 'network.incoming.bytes')
+    net_out = receive_data(keystone_response, start, end, 'network.outgoing.bytes')
 
     logging.info('analysing data')
-    ssm_filtered = ana_received_cpu_data(verbose, debug, nofilter, mapping, report_groups, cpu_used, hide_names)
-    ssm_filtered = ana_received_net_data(verbose, debug, ssm_filtered, nofilter, mapping, report_groups, net_in, hide_names)
-    ssm_filtered = ana_received_net_data(verbose, debug, ssm_filtered, nofilter, mapping, report_groups, net_out, hide_names)
+    ssm_filtered = ana_received_cpu_data(nofilter, mapping, report_groups, cpu_used, hide_names)
+    ssm_filtered = ana_received_net_data(ssm_filtered, nofilter, mapping, report_groups, net_in, hide_names)
+    ssm_filtered = ana_received_net_data(ssm_filtered, nofilter, mapping, report_groups, net_out, hide_names)
 
     #
     # print the result
     #
-    records = PrintSSMRecords(ssm_filtered, sitename, verbose, debug)
+    records = PrintSSMRecords(ssm_filtered, sitename)
     logging.info(records)
 
     if (localreport):
@@ -552,10 +552,10 @@ if __name__ == '__main__':
         logging.info('analysing all data')
 
 
-        ssm_full = ana_received_cpu_data(verbose, debug, nofilter, mapping, report_groups, cpu_used, hide_names)
-        ssm_full = ana_received_net_data(verbose, debug, ssm_full, nofilter, mapping, report_groups, net_in, hide_names)
-        ssm_full = ana_received_net_data(verbose, debug, ssm_full, nofilter, mapping, report_groups, net_out, hide_names)
-        twiki_report = CreateReport(ssm_full, verbose, debug)
+        ssm_full = ana_received_cpu_data(nofilter, mapping, report_groups, cpu_used, hide_names)
+        ssm_full = ana_received_net_data(ssm_full, nofilter, mapping, report_groups, net_in, hide_names)
+        ssm_full = ana_received_net_data(ssm_full, nofilter, mapping, report_groups, net_out, hide_names)
+        twiki_report = CreateReport(ssm_full)
         print twiki_report
 
     if (publish):
