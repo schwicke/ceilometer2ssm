@@ -427,6 +427,62 @@ def parse_and_return_arguments():
            args.localreport,
            args.nofilter
                      )
+   
+def read_data_from_secrets(config):
+   secrets = {}
+   os_auth_url = None
+   os_username = None
+   os_password = None
+   os_tenant_name = None
+   os_cacert = None
+   
+   if 'secrets' in config:
+      secrets = config['secrets']
+   else:
+      logging.info('No secrets defined in the configuration file')
+    
+   if 'os_auth_url' in secrets:
+      os_auth_url = secrets['os_auth_url']
+   elif 'OS_AUTH_URL' in os.environ:
+      os_auth_url = os.environ['OS_AUTH_URL']
+   else:
+      raise Exception('OS_AUTH_URL is not set')
+       
+   if 'os_username' in secrets:
+      os_username = secrets['os_username']
+   elif 'OS_USERNAME' in os.environ:
+      os_username = os.environ['OS_USERNAME']
+   else:
+      raise Exception('OS_USERNAME is not set')
+   
+   if 'os_password' in secrets:
+      os_password = secrets['os_password']
+   elif 'OS_PASSWORD' in os.environ:
+      os_password = os.environ['OS_PASSWORD']
+   else:
+      raise Exception('OS_PASSWORD is not set')
+   
+   if 'os_tenant_name' in secrets:
+      os_tenant_name = secrets['os_tenant_name']
+   elif 'OS_TENANT_NAME' in os.environ:
+      os_tenant_name = os.environ['OS_TENANT_NAME']
+   else:
+      raise Exception('OS_TENANT_NAME is not set')
+   
+   if 'os_cacert' in secrets:
+      os_cacert = secrets['os_cacert']
+   elif 'OS_CACERT' in os.environ:
+      os_cacert = os.environ['OS_CACERT']
+   else:
+      raise Exception('OS_CACERT is not set')
+         
+   return (os_auth_url,
+           os_username,
+           os_password,
+           os_tenant_name,
+           os_cacert)
+         
+         
 if __name__ == '__main__':
     
     (start, end, publish, verbose, debug, configfile, apelssmconf, localreport, nofilter) = parse_and_return_arguments()
@@ -453,57 +509,13 @@ if __name__ == '__main__':
     sitename = config['sitename']
     report_groups = config['report_groups']
     hide_names = config['hide_names']
-
-    if 'secrets' in config:
-        secrets = config['secrets']
-    else:
-        logging.info('No secrets defined in the configuration file')
     
-    if 'os_auth_url' in secrets:
-        os_auth_url = secrets['os_auth_url']
-    else:
-        if 'OS_AUTH_URL' in os.environ:
-            os_auth_url = os.environ['OS_AUTH_URL']
-        else:
-            logging.error('OS_AUTH_URL is not set')
-            sys.exit(1)
-    
-    if 'os_username' in secrets:
-        os_username = secrets['os_username']
-    else:
-        if 'OS_USERNAME' in os.environ:
-            os_username = os.environ['OS_USERNAME']
-        else:
-            logging.error('OS_USERNAME is not set')
-            sys.exit(1)
-
-    if 'os_password' in secrets:
-        os_password = secrets['os_password']
-    else:
-        if 'OS_PASSWORD' in os.environ:
-            os_password = os.environ['OS_PASSWORD']
-        else:
-            logging.error('OS_PASSWORD is not set')
-            sys.exit(1)
-
-    if 'os_tenant_name' in secrets:
-        os_tenant_name = secrets['os_tenant_name']
-    else:
-        if 'OS_TENANT_NAME' in os.environ:
-            os_tenant_name = os.environ['OS_TENANT_NAME']
-        else:
-            logging.error('OS_TENANT_NAME is not set')
-            sys.exit(1)
-
-    if 'os_cacert' in secrets:
-        os_cacert = secrets['os_cacert']
-    else:
-        if 'OS_CACERT' in os.environ:
-            os_cacert = os.environ['OS_CACERT']
-        else:
-            logging.error('OS_CACERT is not set')
-            sys.exit(1)
-
+    try:
+       (os_auth_url, os_username, os_password, os_tenant_name, os_cacert) = read_data_from_secrets(config)
+    except Error,e:
+       logging.error(e)
+       sys.exit(1)
+       
     logging.debug('Getting authentication token from keystone')
 
     auth_keytone_first_parameter = "%s/tokens" % os_auth_url
