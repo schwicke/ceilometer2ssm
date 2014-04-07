@@ -58,30 +58,30 @@ def read_config(filename):
         
 
 def auth_keystone(keystoneserver, username, password, tenant, cacert):
-    auth = '{"auth":{"passwordCredentials":{"username":"%s", "password":"%s"}, "tenantName":"%s"}}' % (username, password, tenant)
-    auth_server = urlparse.urlparse(keystoneserver)[1]
-    auth_protocol = urlparse.urlparse(keystoneserver)[0]
-    auth_path = urlparse.urlparse(keystoneserver)[2]
-    if auth_protocol == "https":
-     Newconn = httplib.HTTPSConnection
-    else:
-     Newconn = httplib.HTTPConnection
+   auth = '{"auth":{"passwordCredentials":{"username":"%s", "password":"%s"}, "tenantName":"%s"}}' % (username, password, tenant)
+   auth_server = urlparse.urlparse(keystoneserver)[1]
+   auth_protocol = urlparse.urlparse(keystoneserver)[0]
+   auth_path = urlparse.urlparse(keystoneserver)[2]
+   if auth_protocol == "https":
+      Newconn = httplib.HTTPSConnection
+   else:
+      Newconn = httplib.HTTPConnection
 
-    header = {'Content-type': 'application/json'}
-    req = 'POST'
-    get_auth_conn = Newconn(auth_server)
-    try:
-        get_auth_conn.request(req, auth_path, auth, header)
-        answer = get_auth_conn.getresponse()
-        if answer.status == 200:
+   header = {'Content-type': 'application/json'}
+   req = 'POST'
+   get_auth_conn = Newconn(auth_server)
+   try:
+      get_auth_conn.request(req, auth_path, auth, header)
+      answer = get_auth_conn.getresponse()
+      if answer.status == 200:
          logging.debug('Keystone authentication succeeded')
          return answer.read()
-        else:
+      else:
          logging.error("Failed to get keystone token from %s" % keystone_server)
          logging.error(answer.reason)
-    except:
-        logging.error('An error occurred while connecting to keystone server')
-        sys.exit(1)
+   except:
+      logging.error('An error occurred while connecting to keystone server')
+      sys.exit(1)
 
 def receive_data(keystone_response, start, end, meter):
     decoded = json.loads(keystone_response)
