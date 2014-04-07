@@ -103,8 +103,8 @@ def receive_data(verbose, debug, keystone_response, start, end, meter):
                 header = {"Content-type": "application/json", "X-Auth-Token": tokenid.encode('ascii', 'ignore')}
                 req = 'GET'
                 if (debug):
-                    print >> sys.stderr, "Query ceilometer server at: " + ceilometer_server
-                    print >> sys.stderr, "Query it with: :" + json.dumps(query , indent=2)
+                    logging.error("Query ceilometer server at: " + ceilometer_server)
+                    logging.error("Query it with: :" + json.dumps(query , indent=2))
                 try:
                     get_cm_conn = NEWconn(ceilometer_server)
                     try:
@@ -113,10 +113,10 @@ def receive_data(verbose, debug, keystone_response, start, end, meter):
                         if res.status == 200:
                             return json.loads(res.read())
                     except:
-                        print >> sys.stderr, "Failed to query ceilometer server at " + ceilometers
+                        logging.error("Failed to query ceilometer server at " + ceilometers)
                         exit(1)
                 except:
-                    print >> sys.stderr, "failed to create the connection object"
+                    logging.error("failed to create the connection object")
 
 def get_uid(username):
     uid = 0
