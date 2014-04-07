@@ -16,6 +16,7 @@ from time import localtime, strftime
 from pwd import getpwnam  
 from dateutil import parser
 from dirq.QueueSimple import QueueSimple
+
 state_map = {
     # from https://wiki.egi.eu/wiki/Fedcloud-tf:WorkGroups:Scenario4
     "active": "started",
@@ -50,10 +51,10 @@ def read_config(filename):
             f.close
             return result
         except:
-            print >> sys.stderr, 'ERROR: Cannot parse configuration file ' + filename
+            logging.error("Cannot parse configuration file " + filename)
             exit(1)
     except IOError:
-        print >> sys.stderr, 'ERROR: Cannot open configuration file ' + filename
+        logging.error('Cannot open configuration file ' + filename)
         exit(1)
         
 
