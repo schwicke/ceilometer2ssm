@@ -168,9 +168,9 @@ def ana_received_cpu_data(filter, mapping, report_groups, cpu_data, hide_names):
             timestamp = parser.parse(record['timestamp']).strftime("%s")
             gid = get_accgroup(filter, mapping, report_groups, record['project_id'])
             logging.debug("Processing resource_id %s in project %s accounting group: %s" % (resource_id, record['project_id'], gid) )
+            
             if (gid == 'unset' or (filter and (gid == 'NULL'))):
                 logging.debug("Skipped input record = %s" % json.dumps(record , indent=2))   
-                pass
             else:
                 # memorize relevant data and find start and end record
                 try:
