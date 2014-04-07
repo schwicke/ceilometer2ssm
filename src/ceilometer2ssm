@@ -285,13 +285,14 @@ def PrintSSMRecords(ssm, sitename):
     line = "APEL-cloud-message: %s\n" % "v0.2"
     for resource_id in ssm.keys():
         if ssm[resource_id]:
-            try:
+            if 'periodstart' in ssm[resource_id] and 'periodend' in ssm[resource_id]:
                logging.info("reported period: from %s to %s" % (ssm[resource_id]['periodstart'], ssm[resource_id]['periodend']))
-            except KeyError:
+            else:
                logging.error('--------------------')
                logging.error("cannot find periodstart for resource %s" % resource_id)
                logging.error(json.dumps(ssm[resource_id], indent=2))
                logging.error('--------------------')
+               
             line += "VMUUID: %s\n" % ssm[resource_id]['vmuuid']
             line += "SiteName: %s\n" % sitename
             line += "MachineName: %s\n" % ssm[resource_id]['machinename']
@@ -299,25 +300,25 @@ def PrintSSMRecords(ssm, sitename):
             line += "LocalGroupId: %s\n" % str(ssm[resource_id]['gid'])
             line += "GlobalUserName: NULL\n"
             line += "FQAN: NULL\n"
+            
             if (ssm[resource_id]['state'] == "running"):
                 line += "Status: %s\n" % "NULL"
             else:
                 line += "Status: %s\n" % ssm[resource_id]['state']
-            try:
-                line += "StartTime: %d\n" % int(ssm[resource_id]['starttime'])
-            except:
-                line += "StartTime: %d\n" % 0
+            
+            if 'starttime' in ssm[resource_id]:
+                starttime = int(ssm[resource_id]['starttime'])
+            else:
+                starttime = 0
                 logging.debug('Starttime is not set. Skipping')
-            try:
+            line += "StartTime: %d\n" % starttime    
+            
+            if 'endtime' in ssm[resource_id]:
                 endtime = int(ssm[resource_id]['endtime'])
-            except:
+            else:
                 endtime = 0
             line += "EndTime: %d\n" % int(endtime)
 
-            try:
-                starttime = int(ssm[resource_id]['starttime'])
-            except:
-                starttime = 0
             if (endtime > 0 and starttime > 0):
               walltime = endtime - starttime
             else:
@@ -325,29 +326,35 @@ def PrintSSMRecords(ssm, sitename):
 
             line += "WallDuration: %d\n" % int(walltime)
             line += "CpuDuration: %d\n" % int(0.5 + float(ssm[resource_id]['cpucount']) / 1000000000.0)
-            try:
+            
+            if 'vcpu' in ssm[resource_id]:
                 line += "CpuCount: %d\n" % int(ssm[resource_id]['vcpu'])
-            except:
+            else:
                 line += "CpuCount: %d\n" % 0
                 logging.debug('Cannot get cpu count. Skipping')
                 logging.debug(ssm[resource_id]['vcpu'])
+            
             line += "%s\n" % 'NetworkType: NULL'
-            try:
+            
+            if 'network.incoming.bytes' in ssm[resource_id]:
                 line += "NetworkInbound: %d\n" % int(0.5 + float(ssm[resource_id]['network.incoming.bytes']['counter_value']) / 1073741824.0)
-            except:
+            else:
                 logging.debug('Inbound traffic is not set. Skipping')
-            try:
+            
+            if 'network.outgoing.bytes' in ssm[resource_id]:
                 line += "NetworkOutbound: %s\n" % int(0.5 + float(ssm[resource_id]['network.outgoing.bytes']['counter_value']) / 1073741824.0)
-            except :
+            else:
                 logging.debug('Outbound traffic is not set. Skipping')
-            try:
+            
+            if 'memory' in ssm[resource_id]:
                 line += "Memory: %d\n" % int(ssm[resource_id]['memory'])
-            except :
+            else:
                 logging.debug('Memory is not set. Skipping')
                 logging.debug(ssm[resource_id]['memory'])
-            try:
+            
+            if 'disk' in ssm[resource_id]:
                 line += "Disk: %d\n" % int(ssm[resource_id]['disk'])
-            except:
+            else:
                 logging.debug('Disk is not set. Skipping')
             # to be added later on
             # line += "GlobalUserName: %s\n" % "NULL"
