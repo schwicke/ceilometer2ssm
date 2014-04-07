@@ -177,12 +177,13 @@ def ana_received_cpu_data(filter, mapping, report_groups, cpu_data, hide_names):
                     ssm_record[resource_id]
                 else:
                     logging.debug("New record %s" % resource_id)
-                    ssm_record[resource_id] = {}
-                    ssm_record[resource_id]['periodstart'] = timestamp
-                    ssm_record[resource_id]['periodend'] = timestamp
-                    ssm_record[resource_id]['machinename'] = 'NULL'
-                    ssm_record[resource_id]['state'] = 'NULL'
-                    ssm_record[resource_id]['imageid'] = 'NULL'
+                    ssm_record[resource_id] = {'periodstart' : timestamp,
+                                               'periodend': timestamp,
+                                               'machinename': 'NULL',
+                                               'state' : 'NULL',
+                                               'imageid' : 'NULL'
+                                               }
+                
                 if (timestamp < ssm_record[resource_id]['periodstart']):
                     ssm_record[resource_id]['periodstart'] = timestamp
                 else:
