@@ -173,9 +173,9 @@ def ana_received_cpu_data(filter, mapping, report_groups, cpu_data, hide_names):
                 logging.debug("Skipped input record = %s" % json.dumps(record , indent=2))   
             else:
                 # memorize relevant data and find start and end record
-                try:
+                if resource_id in ssm_record:
                     ssm_record[resource_id]
-                except KeyError:
+                else:
                     logging.debug("New record %s" % resource_id)
                     ssm_record[resource_id] = {}
                     ssm_record[resource_id]['periodstart'] = timestamp
