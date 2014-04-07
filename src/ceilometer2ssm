@@ -159,19 +159,16 @@ def ana_received_cpu_data(verbose, debug, filter, mapping, report_groups, cpu_da
             resource_id = record['resource_id']
             timestamp = parser.parse(record['timestamp']).strftime("%s")
             gid = get_accgroup(filter, mapping, report_groups, record['project_id'])
-            if debug:
-                print "processing resource_id " + resource_id + " in project " + record['project_id'] + " accounting group: " + gid
+            logging.debug("processing resource_id " + resource_id + " in project " + record['project_id'] + " accounting group: " + gid)
             if (gid == 'unset' or (filter and (gid == 'NULL'))):
-                if debug:
-                    print >> sys.stderr, "Debug: skipped input record = " + json.dumps(record , indent=2)   
+                logging.debug("Skipped input record = " + json.dumps(record , indent=2))   
                 pass
             else:
                 # memorize relevant data and find start and end record
                 try:
                     ssm_record[resource_id]
                 except KeyError:
-                    if debug:
-                        print >> sys.stderr, "Debug: new record " + resource_id
+                    logging.debug("New record " + resource_id)
                     ssm_record[resource_id] = {}
                     ssm_record[resource_id]['periodstart'] = timestamp
                     ssm_record[resource_id]['periodend'] = timestamp
@@ -182,8 +179,7 @@ def ana_received_cpu_data(verbose, debug, filter, mapping, report_groups, cpu_da
                     ssm_record[resource_id]['periodstart'] = timestamp
                 else:
                     if (timestamp >= ssm_record[resource_id]['periodend']):
-                        if debug:
-                            print >> sys.stderr, "Debug Updating record " + resource_id + " start: " + ssm_record[resource_id]['periodstart'] + " end : " + timestamp
+                        logging.debug("Updating record " + resource_id + " start: " + ssm_record[resource_id]['periodstart'] + " end : " + timestamp)
                         ssm_record[resource_id]['periodend'] = timestamp
                         ssm_record[resource_id]['tenant'] = get_tenant(mapping, record['project_id'])
                         ssm_record[resource_id]['vmuuid'] = resource_id
