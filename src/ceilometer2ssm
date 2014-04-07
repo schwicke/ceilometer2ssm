@@ -265,18 +265,17 @@ def ana_received_net_data(ssm_record, filter, mapping, report_groups, net_data, 
                 else:
                     logging.error("Unknown counter unit type %s" % record['counter_unit'])
                     
-                try: 
-                    ssm_record[resource_id][counter_name]
-                    if (timestamp < ssm_record[resource_id][counter_name]['periodstart']):
-                        ssm_record[resource_id][counter_name]['periodstart'] = timestamp
-                    if (timestamp > ssm_record[resource_id][counter_name]['periodend']):
-                        ssm_record[resource_id][counter_name]['periodend'] = timestamp
-                        ssm_record[resource_id][counter_name]['counter_value'] = netcount                            
-                except KeyError:
-                    ssm_record[resource_id][counter_name] = {}
-                    ssm_record[resource_id][counter_name]['periodstart'] = timestamp                    
-                    ssm_record[resource_id][counter_name]['periodend'] = timestamp
-                    ssm_record[resource_id][counter_name]['counter_value'] = netcount
+                if counter_name in ssm_record[resource_id][counter_name]:
+                   if (timestamp < ssm_record[resource_id][counter_name]['periodstart']):
+                      ssm_record[resource_id][counter_name]['periodstart'] = timestamp
+                   if (timestamp > ssm_record[resource_id][counter_name]['periodend']):
+                      ssm_record[resource_id][counter_name]['periodend'] = timestamp
+                      ssm_record[resource_id][counter_name]['counter_value'] = netcount                            
+                else:
+                   ssm_record[resource_id][counter_name] = {}
+                   ssm_record[resource_id][counter_name]['periodstart'] = timestamp                    
+                   ssm_record[resource_id][counter_name]['periodend'] = timestamp
+                   ssm_record[resource_id][counter_name]['counter_value'] = netcount
     except TypeError:
         logging.error('No network usage data information has been received')
         sys.exit(1)
