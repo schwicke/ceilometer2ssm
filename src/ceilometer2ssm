@@ -68,14 +68,14 @@ def auth_keystone(keystoneserver, username, password, tenant, cacert, debug):
     else:
      Newconn = httplib.HTTPConnection
 
-    header = {"Content-type": "application/json"}
-    req = "POST"
+    header = {'Content-type': 'application/json'}
+    req = 'POST'
     get_auth_conn = Newconn(auth_server)
     try:
         get_auth_conn.request(req, auth_path, auth, header)
         answer = get_auth_conn.getresponse()
         if answer.status == 200:
-         logging.debug("Keystone authentication succeeded")
+         logging.debug('Keystone authentication succeeded')
          return answer.read()
         else:
          logging.error("Failed to get keystone token from %s" % keystone_server)
@@ -86,20 +86,29 @@ def auth_keystone(keystoneserver, username, password, tenant, cacert, debug):
 
 def receive_data(verbose, debug, keystone_response, start, end, meter):
     decoded = json.loads(keystone_response)
-    tokenid = decoded["access"]["token"]["id"]
+    tokenid = decoded['access']['token']['id']
     uri = '/v2/meters/%s' % meter
-    for endpoint in decoded["access"]["serviceCatalog"]:
-        if (endpoint["name"] == "ceilometer"):
-            for ceilometers in endpoint["endpoints"]:
-                ceilometer_server = urlparse.urlparse(ceilometers["publicURL"])[1]
-                ceilometer_protocol = urlparse.urlparse(ceilometers["publicURL"])[0]
-                if ceilometer_protocol == "https":
+    for endpoint in decoded['access']['serviceCatalog']:
+        if (endpoint['name'] == 'ceilometer'):
+            for ceilometers in endpoint['endpoints']:
+                ceilometer_server = urlparse.urlparse(ceilometers['publicURL'])[1]
+                ceilometer_protocol = urlparse.urlparse(ceilometers['publicURL'])[0]
+                if ceilometer_protocol == 'https':
                  NEWconn = httplib.HTTPSConnection
                 else:
                  NEWconn = httplib.HTTPConnection
-                query = {"q":[{"field":"timestamp", "op":"ge", "value":start}, {"field": "timestamp", "op":"le", "value":end}] }
+                query = {'q':[{'field':'timestamp',
+                               'op':'ge',
+                               'value':start},
+                              {'field': 'timestamp',
+                               'op':'le',
+                               'value':end}
+                             ]
+                        }
                 data = json.dumps(query)
-                header = {"Content-type": "application/json", "X-Auth-Token": tokenid.encode('ascii', 'ignore')}
+                header = {'Content-type': 'application/json',
+                          'X-Auth-Token': tokenid.encode('ascii', 'ignore')
+                         }
                 req = 'GET'
                 
                 logging.debug("Query ceilometer server at: %s" % ceilometer_server)
@@ -116,7 +125,7 @@ def receive_data(verbose, debug, keystone_response, start, end, meter):
                         logging.error("Failed to query ceilometer server at %s" % ceilometers)
                         exit(1)
                 except:
-                    logging.error("failed to create the connection object")
+                    logging.error('failed to create the connection object')
 
 def get_uid(username):
     uid = 0
@@ -143,7 +152,7 @@ def get_accgroup(filter, mapping, report_groups, project):
 def get_tenant(mapping, project):
     # return the accounting group
     try:
-        tenant = mapping[project]["name"]
+        tenant = mapping[project]['name']
     except:
         tenant = 'NULL'
     return tenant 
@@ -203,7 +212,7 @@ def ana_received_cpu_data(verbose, debug, filter, mapping, report_groups, cpu_da
                             # ssm_record[resource_id]['endtime'] = parser.parse(record['resource_metadata']['deleted_at']).strftime("%s")
                             endtime = parser.parse(record['resource_metadata']['deleted_at']).strftime("%s")
                             # machine terminated 
-                            ssm_record[resource_id]['state'] = "completed"
+                            ssm_record[resource_id]['state'] = 'completed'
                             try: 
                                 if (ssm_record[resource_id]['endtime'] > endtime):
                                     ssm_record[resource_id]['endtime'] = endtime
@@ -237,7 +246,7 @@ def ana_received_cpu_data(verbose, debug, filter, mapping, report_groups, cpu_da
                         ssm_record[resource_id]['memory'] = memory
                         ssm_record[resource_id]['disk'] = disk
     except TypeError:
-        logging.error("No CPU usage data information has been received")
+        logging.error('No CPU usage data information has been received')
         exit(1)
     return ssm_record
 
@@ -273,7 +282,7 @@ def ana_received_net_data(verbose, debug, ssm_record, filter, mapping, report_gr
                     ssm_record[resource_id][counter_name]['periodend'] = timestamp
                     ssm_record[resource_id][counter_name]['counter_value'] = netcount
     except TypeError:
-        logging.error("No network usage data information has been received")
+        logging.error('No network usage data information has been received')
         exit(1)
     return ssm_record
 
