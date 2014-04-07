@@ -43,18 +43,18 @@ state_map = {
 
 
 def read_config(filename):
-    # read the mapping of project-id to accounting group from a file
-    try:
-        f = open(filename,"r")
-        try:
-            result=json.loads(f.read())
-            f.close
-            return result
-        except:
-            logging.error("Cannot parse configuration file %s" % filename)
-    except IOError:
-        logging.error('Cannot open configuration file %s' % filename)
-    sys.exit(1)
+   # read the mapping of project-id to accounting group from a file
+   try:
+      f = open(filename,"r")
+      try:
+         result=json.loads(f.read())
+         f.close
+         return result
+      except:
+         logging.error("Cannot parse configuration file %s" % filename)
+   except IOError:
+      logging.error('Cannot open configuration file %s' % filename)
+   sys.exit(1)
         
 
 def auth_keystone(keystoneserver, username, password, tenant, cacert):
