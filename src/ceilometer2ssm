@@ -51,10 +51,10 @@ def read_config(filename):
             f.close
             return result
         except:
-            logging.error("Cannot parse configuration file " + filename)
+            logging.error("Cannot parse configuration file %s" % filename)
             exit(1)
     except IOError:
-        logging.error('Cannot open configuration file ' + filename)
+        logging.error('Cannot open configuration file %s' % filename)
         exit(1)
         
 
