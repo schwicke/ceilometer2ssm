@@ -437,9 +437,7 @@ if __name__ == '__main__':
     localreport = args.localreport
     nofilter = args.nofilter
 
-    if (debug):
-        verbose = True
-        print >> sys.stderr, "Debug mode is enabled: will not actually publish but just retrieve the data and report!"
+    logging.debug("Debug mode is enabled: will not actually publish but just retrieve the data and report!")
 
     if (verbose) :
         logging.info("Verbose output will be created")
@@ -507,15 +505,13 @@ if __name__ == '__main__':
             logging.error("OS_CACERT is not set")
             exit(1)
 
-    if (debug):
-        print >> sys.stderr, "Getting authentication token from keystone"
+    logging.debug("Getting authentication token from keystone")
 
     keystone_response = auth_keystone(os_auth_url + '/tokens', os_username, os_password, os_tenant_name, os_cacert, debug)
 
-    if (debug):
-        print >> sys.stderr, "Keystone response:"
-        print >> sys.stderr, json.dumps(keystone_response, indent=2)
-        print >> sys.stderr, "reading cpu and net information from ceilometer"
+    logging.debug("Keystone response:")
+    logging.debug(json.dumps(keystone_response, indent=2))
+    logging.debug("reading cpu and net information from ceilometer")
 
     #
     # retrieve data and analyse
@@ -558,7 +554,7 @@ if __name__ == '__main__':
         dirq.add(records)
         command_line = "/usr/bin/ssmsend --config " + apelssmconf
         if (debug):
-            print >> sys.stderr, "Would now run \"" + command_line + "\""
+            logging.debug("Would now run \"" + command_line + "\"")
         else:
             args = shlex.split(command_line)
             try:
