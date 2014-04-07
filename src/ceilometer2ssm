@@ -499,7 +499,30 @@ def analyse_data(filtered, mapping, report_groups, hide_names, cpu_used, net_in,
    ssm_filtered = ana_received_net_data(ssm_filtered, filtered, mapping, report_groups, net_in, hide_names)
    ssm_filtered = ana_received_net_data(ssm_filtered, filtered, mapping, report_groups, net_out, hide_names)  
    
-          
+def print_local_report(mapping, report_groups, hide_names, cpu_used, net_in, net_out):
+   logging.info('analysing all data')
+   ssm_full = analyse_data(True, mapping, report_groups, hide_names, cpu_used, net_in, net_out)
+   twiki_report = CreateReport(ssm_full)
+   print twiki_report
+   
+def publish_records(debug, apelssmconf):
+   dirq = QueueSimple('/var/spool/apel/outgoing/')
+   dirq.add(records)
+   command_line = "/usr/bin/ssmsend --config %s" % apelssmconf
+   if (debug):
+      logging.debug("Would now run \"%s\"" % command_line)
+   else:
+      args = shlex.split(command_line)
+      try:
+         p = subprocess.Popen(args)
+         if (p.wait() != 0):
+            logging.error(p)
+            sys.exit(1)
+      except:
+         logging.error('Failed to send the message')
+         sys.exit(1)
+
+                          
 if __name__ == '__main__':
     
     (start, end, publish, verbose, debug, configfile, apelssmconf, localreport, nofilter) = parse_and_return_arguments()
@@ -558,28 +581,8 @@ if __name__ == '__main__':
     logging.info(records)
 
     if (localreport):
-        nofilter = True
-        logging.info('analysing all data')
-
-
-        ssm_full = analyse_data(True, mapping, report_groups, hide_names, cpu_used, net_in, net_out)
-        twiki_report = CreateReport(ssm_full)
-        print twiki_report
+       print_local_report(mapping, report_groups, hide_names, cpu_used, net_in, net_out)    
 
     if (publish):
-        dirq = QueueSimple('/var/spool/apel/outgoing/')
-        dirq.add(records)
-        command_line = "/usr/bin/ssmsend --config %s" % apelssmconf
-        if (debug):
-            logging.debug("Would now run \"%s\"" % command_line)
-        else:
-            args = shlex.split(command_line)
-            try:
-                p = subprocess.Popen(args)
-                if (p.wait() != 0):
-                    logging.error(p)
-                    sys.exit(1)
-            except:
-                logging.error('Failed to send the message')
-                sys.exit(1)
+       publish_records(debug, apelssmconf)
             
