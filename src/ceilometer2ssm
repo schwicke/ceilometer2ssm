@@ -195,50 +195,46 @@ def ana_received_cpu_data(filter, mapping, report_groups, cpu_data, hide_names):
                         uid = record['user_id']
                         memory = record['resource_metadata']['memory_mb']
                         vcpu = record['resource_metadata']['vcpus']
-                        try:
-                            ssm_record[resource_id]['imageid'] = record['resource_metadata']['image_ref_url']
-                        except:
-                            pass
                         disk = record['resource_metadata']['disk_gb']
-                        try:
-                            ssm_record[resource_id]['state'] = state_map[record['resource_metadata']['state']]
-                        except:
-                            pass
-                        try:
-                            ssm_record[resource_id]['starttime'] = parser.parse(record['resource_metadata']['created_at']).strftime("%s")
-                        except:
-                            pass
-                        try:
-                            # ssm_record[resource_id]['endtime'] = parser.parse(record['resource_metadata']['deleted_at']).strftime("%s")
-                            endtime = parser.parse(record['resource_metadata']['deleted_at']).strftime("%s")
-                            # machine terminated 
-                            ssm_record[resource_id]['state'] = 'completed'
-                            try: 
-                                if (ssm_record[resource_id]['endtime'] > endtime):
-                                    ssm_record[resource_id]['endtime'] = endtime
-                            except:
-                                ssm_record[resource_id]['endtime'] = endtime
-                        except:
-                            pass
+                        
+                        if 'image_ref_url' in record['resource_metadata']:
+                           ssm_record[resource_id]['imageid'] = record['resource_metadata']['image_ref_url']
+                        
+                        if 'state' in record['resource_metadata']:
+                           ssm_record[resource_id]['state'] = state_map[record['resource_metadata']['state']]
+                        
+                        if 'created_at' in record['resource_metadata']:
+                           ssm_record[resource_id]['starttime'] = parser.parse(record['resource_metadata']['created_at']).strftime("%s")                          
+                        
+                        if 'deleted_at' in record['resource_metadata']:
+                           # ssm_record[resource_id]['endtime'] = parser.parse(record['resource_metadata']['deleted_at']).strftime("%s")
+                           endtime = parser.parse(record['resource_metadata']['deleted_at']).strftime("%s")
+                           # machine terminated 
+                           ssm_record[resource_id]['state'] = 'completed'
+                           
+                           if 'endtime' in ssm_record[resource_id]:  
+                              if (ssm_record[resource_id]['endtime'] > endtime):
+                                 ssm_record[resource_id]['endtime'] = endtime
+                           else:
+                              ssm_record[resource_id]['endtime'] = endtime
+                        
                         if record['counter_unit'] == 'ns':
                             cpucount = record['counter_volume']
                         else:
                             logging.error("Unknown counter unit type %s" % record['counter_unit'])
                         
                         if (hide_names):
-                            try:
-                                ssm_record[resource_id]['machinename'] = record['resource_metadata']['instance_id']
-                            except:
-                                pass
+                            if 'instance_id' in record['resource_metadata']:
+                               ssm_record[resource_id]['machinename'] = record['resource_metadata']['instance_id']
+                            
                             try:
                                 uid = str(get_uid(uid))
                             except:
                                 uid = "nobody"
                         else:
-                            try:
-                                ssm_record[resource_id]['machinename'] = record['resource_metadata']['display_name']
-                            except:
-                                pass
+                            if 'display_name' in record['resource_metadata']:
+                               ssm_record[resource_id]['machinename'] = record['resource_metadata']['display_name']
+                            
                         ssm_record[resource_id]['uid'] = uid
                         ssm_record[resource_id]['gid'] = gid 
                         ssm_record[resource_id]['cpucount'] = cpucount
