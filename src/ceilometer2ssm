@@ -287,12 +287,12 @@ def PrintSSMRecords(ssm, sitename, verbose, debug):
         if ssm[resource_id]:
             if (verbose):
                 try:
-                    print >> sys.stderr, "INFO: reported period: from " + ssm[resource_id]['periodstart'] + " to " + ssm[resource_id]['periodend']
+                    logging.info("reported period: from " + ssm[resource_id]['periodstart'] + " to " + ssm[resource_id]['periodend'])
                 except KeyError:
-                    print >> sys.stderr, "--------------------"
-                    print >> sys.stderr, "cannot find periodstart for resource " + resource_id
-                    print >> sys.stderr, json.dumps(ssm[resource_id], indent=2)
-                    print >> sys.stderr, "--------------------"
+                    logging.error("--------------------")
+                    logging.error("cannot find periodstart for resource " + resource_id)
+                    logging.error(json.dumps(ssm[resource_id], indent=2))
+                    logging.error("--------------------")
             line += "VMUUID: %s\n" % ssm[resource_id]['vmuuid']
             line += "SiteName: %s\n" % sitename
             line += "MachineName: %s\n" % ssm[resource_id]['machinename']
