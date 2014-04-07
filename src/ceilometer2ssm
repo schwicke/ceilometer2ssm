@@ -436,6 +436,12 @@ if __name__ == '__main__':
     apelssmconf = args.apelssmconf
     localreport = args.localreport
     nofilter = args.nofilter
+    
+    if verbose:
+       logging.basicConfig(level=logging.INFO)
+    
+    if debug:
+       logging.basicConfig(level=logging.DEBUG)
 
     logging.debug("Debug mode is enabled: will not actually publish but just retrieve the data and report!")
 
