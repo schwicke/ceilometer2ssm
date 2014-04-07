@@ -442,91 +442,92 @@ if __name__ == '__main__':
     if debug:
        logging.basicConfig(level=logging.DEBUG)
 
-    logging.debug("Debug mode is enabled: will not actually publish but just retrieve the data and report!")
+    logging.debug('Debug mode is enabled: will not actually publish but just retrieve the data and report!')
 
-    logging.info("Verbose output will be created")
-    logging.info("Reading configuration from " + configfile)
-    logging.info("Records are processed between " + start + " and " + end)
+    logging.info('Verbose output will be created')
+    logging.info("Reading configuration from %s")
+    logging.info("Records are processed between %s and %s" % (start, end))
     if (publish):
-       logging.info("Resulting records will be published to APEL")
+       logging.info('Resulting records will be published to APEL')
     else:
-       logging.info("Will not try to publish the result")
+       logging.info('Will not try to publish the result')
 
     # read mapping from file
     config = read_config(configfile)
-    mapping = config["mapping"]
-    sitename = config["sitename"]
-    report_groups = config["report_groups"]
-    hide_names = config["hide_names"]
+    mapping = config['mapping']
+    sitename = config['sitename']
+    report_groups = config['report_groups']
+    hide_names = config['hide_names']
 
     try:
-        secrets = config["secrets"]
+        secrets = config['secrets']
     except:
-        logging.info("No secrets defined in the configuration file")
+        logging.info('No secrets defined in the configuration file')
     
     try:
-        os_auth_url = secrets["os_auth_url"]
+        os_auth_url = secrets['os_auth_url']
     except:
         try:
             os_auth_url = os.environ['OS_AUTH_URL']
         except KeyError:
-            logging.error("OS_AUTH_URL is not set")
+            logging.error('OS_AUTH_URL is not set')
             exit(1)
     try:
-        os_username = secrets["os_username"]
+        os_username = secrets['os_username']
     except:
         try:
             os_username = os.environ['OS_USERNAME']
         except KeyError:
-            logging.error("OS_USERNAME is not set")
+            logging.error('OS_USERNAME is not set')
             exit(1)
 
     try:
-        os_password = secrets["os_password"]
+        os_password = secrets['os_password']
     except:
         try:
             os_password = os.environ['OS_PASSWORD']
         except KeyError:
-            logging.error("OS_PASSWORD is not set")
+            logging.error('OS_PASSWORD is not set')
             exit(1)
 
     try:
-        os_tenant_name = secrets["os_tenant_name"]
+        os_tenant_name = secrets['os_tenant_name']
     except:
         try:
             os_tenant_name = os.environ['OS_TENANT_NAME']
         except KeyError:
-            logging.error("OS_TENANT_NAME is not set")
+            logging.error('OS_TENANT_NAME is not set')
             exit(1)
 
     try:
-        os_cacert = secrets["os_cacert"]
+        os_cacert = secrets['os_cacert']
     except:
         try:
             os_cacert = os.environ['OS_CACERT']
         except KeyError:
-            logging.error("OS_CACERT is not set")
+            logging.error('OS_CACERT is not set')
             exit(1)
 
-    logging.debug("Getting authentication token from keystone")
+    logging.debug('Getting authentication token from keystone')
 
-    keystone_response = auth_keystone(os_auth_url + '/tokens', os_username, os_password, os_tenant_name, os_cacert, debug)
+    auth_keytone_first_parameter = "%s/tokens" % os_auth_url
+    keystone_response = auth_keystone(auth_keytone_first_parameter, os_username, os_password, os_tenant_name, os_cacert, debug)
 
-    logging.debug("Keystone response:")
-    logging.debug(json.dumps(keystone_response, indent=2))
-    logging.debug("reading cpu and net information from ceilometer")
+    logging.debug('Keystone response:')
+    logging.debug("%s" % json.dumps(keystone_response, indent=2))
+    logging.debug('reading cpu and net information from ceilometer')
 
     #
     # retrieve data and analyse
     #
 
     # cpu
-    logging.info("reading data from ceilometer")
+    logging.info('reading data from ceilometer')
     cpu_used = receive_data(verbose, debug, keystone_response, start, end, 'cpu')
     net_in = receive_data(verbose, debug, keystone_response, start, end, 'network.incoming.bytes')
     net_out = receive_data(verbose, debug, keystone_response, start, end, 'network.outgoing.bytes')
 
-    logging.info("analysing data")
+    logging.info('analysing data')
     ssm_filtered = ana_received_cpu_data(verbose, debug, nofilter, mapping, report_groups, cpu_used, hide_names)
     ssm_filtered = ana_received_net_data(verbose, debug, ssm_filtered, nofilter, mapping, report_groups, net_in, hide_names)
     ssm_filtered = ana_received_net_data(verbose, debug, ssm_filtered, nofilter, mapping, report_groups, net_out, hide_names)
@@ -539,7 +540,7 @@ if __name__ == '__main__':
 
     if (localreport):
         nofilter = True
-        logging.info("analysing all data")
+        logging.info('analysing all data')
 
 
         ssm_full = ana_received_cpu_data(verbose, debug, nofilter, mapping, report_groups, cpu_used, hide_names)
@@ -551,9 +552,9 @@ if __name__ == '__main__':
     if (publish):
         dirq = QueueSimple('/var/spool/apel/outgoing/')
         dirq.add(records)
-        command_line = "/usr/bin/ssmsend --config " + apelssmconf
+        command_line = "/usr/bin/ssmsend --config %s" % apelssmconf
         if (debug):
-            logging.debug("Would now run \"" + command_line + "\"")
+            logging.debug("Would now run \"%s\"" % command_line)
         else:
             args = shlex.split(command_line)
             try:
@@ -562,6 +563,6 @@ if __name__ == '__main__':
                     logging.error(p)
                     exit(1)
             except:
-                logging.error("Failed to send the message")
+                logging.error('Failed to send the message')
                 exit(1)
             
