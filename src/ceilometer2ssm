@@ -452,13 +452,13 @@ if __name__ == '__main__':
         print >> sys.stderr, "Debug mode is enabled: will not actually publish but just retrieve the data and report!"
 
     if (verbose) :
-        print >> sys.stderr, "Verbose output will be created"
-        print >> sys.stderr, "Reading configuration from " + configfile
-        print >> sys.stderr, "Records are processed between " + start + " and " + end
+        logging.info("Verbose output will be created")
+        logging.info("Reading configuration from " + configfile)
+        logging.info("Records are processed between " + start + " and " + end)
         if (publish):
-            print >> sys.stderr, "Resulting records will be published to APEL"
+            logging.info("Resulting records will be published to APEL")
         else:
-            print >> sys.stderr, "Will not try to publish the result"
+            logging.info("Will not try to publish the result")
 
     # read mapping from file
     config = read_config(configfile)
@@ -471,7 +471,7 @@ if __name__ == '__main__':
         secrets = config["secrets"]
     except:
         if (verbose):
-            print >> sys.stderr, "No secrets defined in the configuration file"
+            logging.info("No secrets defined in the configuration file")
     
     try:
         os_auth_url = secrets["os_auth_url"]
@@ -479,7 +479,7 @@ if __name__ == '__main__':
         try:
             os_auth_url = os.environ['OS_AUTH_URL']
         except KeyError:
-            print >> sys.stderr, "ERROR: OS_AUTH_URL is not set"
+            logging.error("OS_AUTH_URL is not set")
             exit(1)
     try:
         os_username = secrets["os_username"]
@@ -487,7 +487,7 @@ if __name__ == '__main__':
         try:
             os_username = os.environ['OS_USERNAME']
         except KeyError:
-            print >> sys.stderr, "ERROR: OS_USERNAME is not set"
+            logging.error("OS_USERNAME is not set")
             exit(1)
 
     try:
@@ -496,7 +496,7 @@ if __name__ == '__main__':
         try:
             os_password = os.environ['OS_PASSWORD']
         except KeyError:
-            print >> sys.stderr, "ERROR: OS_PASSWORD is not set"
+            logging.error("OS_PASSWORD is not set")
             exit(1)
 
     try:
@@ -505,7 +505,7 @@ if __name__ == '__main__':
         try:
             os_tenant_name = os.environ['OS_TENANT_NAME']
         except KeyError:
-            print >> sys.stderr, "ERROR: OS_TENANT_NAME is not set"
+            logging.error("OS_TENANT_NAME is not set")
             exit(1)
 
     try:
@@ -514,7 +514,7 @@ if __name__ == '__main__':
         try:
             os_cacert = os.environ['OS_CACERT']
         except KeyError:
-            print >> sys.stderr, "ERROR: OS_CACERT is not set"
+            logging.error("OS_CACERT is not set")
             exit(1)
 
     if (debug):
@@ -533,13 +533,13 @@ if __name__ == '__main__':
 
     # cpu
     if (verbose):
-        print >> sys.stderr, "reading data from ceilometer"
+        logging.info("reading data from ceilometer")
     cpu_used = receive_data(verbose, debug, keystone_response, start, end, 'cpu')
     net_in = receive_data(verbose, debug, keystone_response, start, end, 'network.incoming.bytes')
     net_out = receive_data(verbose, debug, keystone_response, start, end, 'network.outgoing.bytes')
 
     if (verbose):
-        print >> sys.stderr, "analysing data"
+        logging.info("analysing data")
     ssm_filtered = ana_received_cpu_data(verbose, debug, nofilter, mapping, report_groups, cpu_used, hide_names)
     ssm_filtered = ana_received_net_data(verbose, debug, ssm_filtered, nofilter, mapping, report_groups, net_in, hide_names)
     ssm_filtered = ana_received_net_data(verbose, debug, ssm_filtered, nofilter, mapping, report_groups, net_out, hide_names)
@@ -549,12 +549,12 @@ if __name__ == '__main__':
     #
     records = PrintSSMRecords(ssm_filtered, sitename, verbose, debug)
     if verbose:
-        print >> sys.stderr, records
+        logging.info(records)
 
     if (localreport):
         nofilter = True
         if (verbose):
-            print >> sys.stderr, "analysing all data"
+            logging.info("analysing all data")
 
 
         ssm_full = ana_received_cpu_data(verbose, debug, nofilter, mapping, report_groups, cpu_used, hide_names)
@@ -574,9 +574,9 @@ if __name__ == '__main__':
             try:
                 p = subprocess.Popen(args)
                 if (p.wait() != 0):
-                    print >> sys.stderr, p
+                    logging.error(p)
                     exit(1)
             except:
-                print >> sys.stderr, "ERROR: Failed to send the message"
+                logging.error("Failed to send the message")
                 exit(1)
             
