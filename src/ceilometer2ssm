@@ -52,10 +52,9 @@ def read_config(filename):
             return result
         except:
             logging.error("Cannot parse configuration file %s" % filename)
-            exit(1)
     except IOError:
         logging.error('Cannot open configuration file %s' % filename)
-        exit(1)
+    sys.exit(1)
         
 
 def auth_keystone(keystoneserver, username, password, tenant, cacert):
