@@ -482,7 +482,17 @@ def read_data_from_secrets(config):
            os_tenant_name,
            os_cacert)
          
-         
+
+def retrieve_data(keystone_response, start , end ):
+   logging.info('reading data from ceilometer')
+   cpu_used = receive_data(keystone_response, start, end, 'cpu')
+   net_in = receive_data(keystone_response, start, end, 'network.incoming.bytes')
+   net_out = receive_data(keystone_response, start, end, 'network.outgoing.bytes')
+   
+   return (cpu_used,
+           net_in,
+           net_out)
+            
 if __name__ == '__main__':
     
     (start, end, publish, verbose, debug, configfile, apelssmconf, localreport, nofilter) = parse_and_return_arguments()
@@ -530,10 +540,7 @@ if __name__ == '__main__':
     #
 
     # cpu
-    logging.info('reading data from ceilometer')
-    cpu_used = receive_data(keystone_response, start, end, 'cpu')
-    net_in = receive_data(keystone_response, start, end, 'network.incoming.bytes')
-    net_out = receive_data(keystone_response, start, end, 'network.outgoing.bytes')
+    (cpu_used, net_in, net_out) = retrieve_data(keystone_response, start, end)
 
     logging.info('analysing data')
     ssm_filtered = ana_received_cpu_data(nofilter, mapping, report_groups, cpu_used, hide_names)
