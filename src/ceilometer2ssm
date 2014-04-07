@@ -59,7 +59,7 @@ def read_config(filename):
         
 
 def auth_keystone(keystoneserver, username, password, tenant, cacert, debug):
-    auth = '{"auth":{"passwordCredentials":{"username":"' + username + '","password":"' + password + '"}, "tenantName":"' + tenant + '"}}'
+    auth = '{"auth":{"passwordCredentials":{"username":"%s", "password":"%s"}, "tenantName":"%s"}}' % (username, password, tenant)
     auth_server = urlparse.urlparse(keystoneserver)[1]
     auth_protocol = urlparse.urlparse(keystoneserver)[0]
     auth_path = urlparse.urlparse(keystoneserver)[2]
@@ -78,7 +78,7 @@ def auth_keystone(keystoneserver, username, password, tenant, cacert, debug):
          logging.debug("Keystone authentication succeeded")
          return answer.read()
         else:
-         logging.error("Failed to get keystone token from " + keystone_server)
+         logging.error("Failed to get keystone token from %s" % keystone_server)
          logging.error(answer.reason)
     except:
         logging.error('An error occurred while connecting to keystone server')
