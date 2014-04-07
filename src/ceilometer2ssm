@@ -81,7 +81,7 @@ def auth_keystone(keystoneserver, username, password, tenant, cacert):
          logging.error(answer.reason)
     except:
         logging.error('An error occurred while connecting to keystone server')
-        exit(1)
+        sys.exit(1)
 
 def receive_data(keystone_response, start, end, meter):
     decoded = json.loads(keystone_response)
