@@ -356,8 +356,8 @@ def PrintSSMRecords(ssm, sitename, verbose, debug):
     return line
 
 def CreateReport(ssm, verbose, debug):
-    report = "Last Update:" + strftime("%a, %d %b %Y %H:%M:%S", localtime()) + "\n"
-    report += "| *Accounting group* | *VMs* | *CPUs* | *disk* | *cpu time* | *memory* | *net in* | *net out* | \n"
+    report = "Last Update: %s\n" % strftime("%a, %d %b %Y %H:%M:%S", localtime())
+    report += '| *Accounting group* | *VMs* | *CPUs* | *disk* | *cpu time* | *memory* | *net in* | *net out* | \n'
     by_accgroup = {}
     for resource_id in ssm.keys():
         try: 
@@ -408,7 +408,7 @@ def CreateReport(ssm, verbose, debug):
 
 
     for accgroup in by_accgroup.keys():
-        report += "| " + accgroup + " | " + str(by_accgroup[accgroup]['nvms']) + " | " + str(by_accgroup[accgroup]['ncores']) + " | " + str(by_accgroup[accgroup]['disk']) + " | " + str(by_accgroup[accgroup]['cpucount']) + " | " + str(by_accgroup[accgroup]['memory']) + " | " + str(by_accgroup[accgroup]['net_in']) + " | " + str(by_accgroup[accgroup]['net_out']) + "|\n"
+       report += "| %s | %s | %s | %s | %s | %s | %s | %s |\n" % (accgroup, str(by_accgroup[accgroup]['nvms']), str(by_accgroup[accgroup]['ncores']), str(by_accgroup[accgroup]['disk']), str(by_accgroup[accgroup]['cpucount']), str(by_accgroup[accgroup]['memory']), str(by_accgroup[accgroup]['net_in']), str(by_accgroup[accgroup]['net_out']))
 
     return report
 
