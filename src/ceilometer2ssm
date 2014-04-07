@@ -75,8 +75,7 @@ def auth_keystone(keystoneserver, username, password, tenant, cacert, debug):
         get_auth_conn.request(req, auth_path, auth, header)
         answer = get_auth_conn.getresponse()
         if answer.status == 200:
-         if (debug):
-          logging.error("Keystone authentication succeeded")
+         logging.debug("Keystone authentication succeeded")
          return answer.read()
         else:
          logging.error("Failed to get keystone token from " + keystone_server)
