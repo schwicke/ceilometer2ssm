@@ -479,7 +479,7 @@ if __name__ == '__main__':
             os_auth_url = os.environ['OS_AUTH_URL']
         except KeyError:
             logging.error('OS_AUTH_URL is not set')
-            exit(1)
+            sys.exit(1)
     try:
         os_username = secrets['os_username']
     except:
@@ -487,7 +487,7 @@ if __name__ == '__main__':
             os_username = os.environ['OS_USERNAME']
         except KeyError:
             logging.error('OS_USERNAME is not set')
-            exit(1)
+            sys.exit(1)
 
     try:
         os_password = secrets['os_password']
@@ -496,7 +496,7 @@ if __name__ == '__main__':
             os_password = os.environ['OS_PASSWORD']
         except KeyError:
             logging.error('OS_PASSWORD is not set')
-            exit(1)
+            sys.exit(1)
 
     try:
         os_tenant_name = secrets['os_tenant_name']
@@ -505,7 +505,7 @@ if __name__ == '__main__':
             os_tenant_name = os.environ['OS_TENANT_NAME']
         except KeyError:
             logging.error('OS_TENANT_NAME is not set')
-            exit(1)
+            sys.exit(1)
 
     try:
         os_cacert = secrets['os_cacert']
@@ -514,7 +514,7 @@ if __name__ == '__main__':
             os_cacert = os.environ['OS_CACERT']
         except KeyError:
             logging.error('OS_CACERT is not set')
-            exit(1)
+            sys.exit(1)
 
     logging.debug('Getting authentication token from keystone')
 
@@ -569,8 +569,8 @@ if __name__ == '__main__':
                 p = subprocess.Popen(args)
                 if (p.wait() != 0):
                     logging.error(p)
-                    exit(1)
+                    sys.exit(1)
             except:
                 logging.error('Failed to send the message')
-                exit(1)
+                sys.exit(1)
             
