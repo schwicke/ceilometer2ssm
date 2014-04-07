@@ -122,7 +122,7 @@ def receive_data(keystone_response, start, end, meter):
                             return json.loads(res.read())
                     except:
                         logging.error("Failed to query ceilometer server at %s" % ceilometers)
-                        exit(1)
+                        sys.exit(1)
                 except:
                     logging.error('failed to create the connection object')
 
