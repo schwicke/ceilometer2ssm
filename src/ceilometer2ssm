@@ -445,14 +445,13 @@ if __name__ == '__main__':
 
     logging.debug("Debug mode is enabled: will not actually publish but just retrieve the data and report!")
 
-    if (verbose) :
-        logging.info("Verbose output will be created")
-        logging.info("Reading configuration from " + configfile)
-        logging.info("Records are processed between " + start + " and " + end)
-        if (publish):
-            logging.info("Resulting records will be published to APEL")
-        else:
-            logging.info("Will not try to publish the result")
+    logging.info("Verbose output will be created")
+    logging.info("Reading configuration from " + configfile)
+    logging.info("Records are processed between " + start + " and " + end)
+    if (publish):
+       logging.info("Resulting records will be published to APEL")
+    else:
+       logging.info("Will not try to publish the result")
 
     # read mapping from file
     config = read_config(configfile)
@@ -464,8 +463,7 @@ if __name__ == '__main__':
     try:
         secrets = config["secrets"]
     except:
-        if (verbose):
-            logging.info("No secrets defined in the configuration file")
+        logging.info("No secrets defined in the configuration file")
     
     try:
         os_auth_url = secrets["os_auth_url"]
@@ -524,14 +522,12 @@ if __name__ == '__main__':
     #
 
     # cpu
-    if (verbose):
-        logging.info("reading data from ceilometer")
+    logging.info("reading data from ceilometer")
     cpu_used = receive_data(verbose, debug, keystone_response, start, end, 'cpu')
     net_in = receive_data(verbose, debug, keystone_response, start, end, 'network.incoming.bytes')
     net_out = receive_data(verbose, debug, keystone_response, start, end, 'network.outgoing.bytes')
 
-    if (verbose):
-        logging.info("analysing data")
+    logging.info("analysing data")
     ssm_filtered = ana_received_cpu_data(verbose, debug, nofilter, mapping, report_groups, cpu_used, hide_names)
     ssm_filtered = ana_received_net_data(verbose, debug, ssm_filtered, nofilter, mapping, report_groups, net_in, hide_names)
     ssm_filtered = ana_received_net_data(verbose, debug, ssm_filtered, nofilter, mapping, report_groups, net_out, hide_names)
@@ -540,13 +536,11 @@ if __name__ == '__main__':
     # print the result
     #
     records = PrintSSMRecords(ssm_filtered, sitename, verbose, debug)
-    if verbose:
-        logging.info(records)
+    logging.info(records)
 
     if (localreport):
         nofilter = True
-        if (verbose):
-            logging.info("analysing all data")
+        logging.info("analysing all data")
 
 
         ssm_full = ana_received_cpu_data(verbose, debug, nofilter, mapping, report_groups, cpu_used, hide_names)
