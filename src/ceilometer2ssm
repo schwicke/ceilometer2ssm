@@ -159,16 +159,16 @@ def ana_received_cpu_data(verbose, debug, filter, mapping, report_groups, cpu_da
             resource_id = record['resource_id']
             timestamp = parser.parse(record['timestamp']).strftime("%s")
             gid = get_accgroup(filter, mapping, report_groups, record['project_id'])
-            logging.debug("processing resource_id " + resource_id + " in project " + record['project_id'] + " accounting group: " + gid)
+            logging.debug("Processing resource_id %s in project %s accounting group: %s" % (resource_id, record['project_id'], gid) )
             if (gid == 'unset' or (filter and (gid == 'NULL'))):
-                logging.debug("Skipped input record = " + json.dumps(record , indent=2))   
+                logging.debug("Skipped input record = %s" % json.dumps(record , indent=2))   
                 pass
             else:
                 # memorize relevant data and find start and end record
                 try:
                     ssm_record[resource_id]
                 except KeyError:
-                    logging.debug("New record " + resource_id)
+                    logging.debug("New record %s" % resource_id)
                     ssm_record[resource_id] = {}
                     ssm_record[resource_id]['periodstart'] = timestamp
                     ssm_record[resource_id]['periodend'] = timestamp
@@ -179,7 +179,7 @@ def ana_received_cpu_data(verbose, debug, filter, mapping, report_groups, cpu_da
                     ssm_record[resource_id]['periodstart'] = timestamp
                 else:
                     if (timestamp >= ssm_record[resource_id]['periodend']):
-                        logging.debug("Updating record " + resource_id + " start: " + ssm_record[resource_id]['periodstart'] + " end : " + timestamp)
+                        logging.debug("Updating record %s start: %s end : %s" % (resource_id, ssm_record[resource_id]['periodstart'], timestamp))
                         ssm_record[resource_id]['periodend'] = timestamp
                         ssm_record[resource_id]['tenant'] = get_tenant(mapping, record['project_id'])
                         ssm_record[resource_id]['vmuuid'] = resource_id
@@ -214,7 +214,7 @@ def ana_received_cpu_data(verbose, debug, filter, mapping, report_groups, cpu_da
                         if record['counter_unit'] == 'ns':
                             cpucount = record['counter_volume']
                         else:
-                            logging.error("unknown counter unit type" + record['counter_unit'])
+                            logging.error("Unknown counter unit type %s" % record['counter_unit'])
                         
                         if (hide_names):
                             try:
