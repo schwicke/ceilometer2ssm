@@ -258,7 +258,7 @@ def ana_received_net_data(verbose, debug, ssm_record, filter, mapping, report_gr
                 if record['counter_unit'] == 'B':
                     netcount = record['counter_volume']
                 else:
-                    logging.error("unknown counter unit type" + record['counter_unit'])
+                    logging.error("Unknown counter unit type %s" % record['counter_unit'])
                     
                 try: 
                     ssm_record[resource_id][counter_name]
