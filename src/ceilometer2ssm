@@ -101,9 +101,10 @@ def receive_data(verbose, debug, keystone_response, start, end, meter):
                 data = json.dumps(query)
                 header = {"Content-type": "application/json", "X-Auth-Token": tokenid.encode('ascii', 'ignore')}
                 req = 'GET'
-                if (debug):
-                    logging.error("Query ceilometer server at: " + ceilometer_server)
-                    logging.error("Query it with: :" + json.dumps(query , indent=2))
+                
+                logging.debug("Query ceilometer server at: " + ceilometer_server)
+                logging.debug("Query it with: :" + json.dumps(query , indent=2))
+                
                 try:
                     get_cm_conn = NEWconn(ceilometer_server)
                     try:
