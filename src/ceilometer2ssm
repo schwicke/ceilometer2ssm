@@ -367,61 +367,41 @@ def PrintSSMRecords(ssm, sitename):
     return line
 
 def CreateReport(ssm):
-    report = "Last Update: %s\n" % strftime("%a, %d %b %Y %H:%M:%S", localtime())
-    report += '| *Accounting group* | *VMs* | *CPUs* | *disk* | *cpu time* | *memory* | *net in* | *net out* | \n'
-    by_accgroup = {}
-    for resource_id in ssm.keys():
-        try: 
-            by_accgroup[ssm[resource_id]['gid']]
-        except KeyError:
-            by_accgroup[ssm[resource_id]['gid']] = {}
-
-        try:
-            by_accgroup[ssm[resource_id]['gid']]['nvms'] += 1
-        except KeyError:
-            by_accgroup[ssm[resource_id]['gid']]['nvms'] = 1 
-
-        try:
-            by_accgroup[ssm[resource_id]['gid']]['ncores'] += int(ssm[resource_id]['vcpu'])
-        except KeyError:
-            by_accgroup[ssm[resource_id]['gid']]['ncores'] = int(ssm[resource_id]['vcpu'])
-
-        try:
-            by_accgroup[ssm[resource_id]['gid']]['disk'] += int(ssm[resource_id]['disk']) 
-        except KeyError:
-            by_accgroup[ssm[resource_id]['gid']]['disk'] = int(ssm[resource_id]['disk'])
-
-        try:
-            by_accgroup[ssm[resource_id]['gid']]['cpucount'] += int(ssm[resource_id]['cpucount'] / 1000000000.0)
-        except KeyError:
-            by_accgroup[ssm[resource_id]['gid']]['cpucount'] = int(ssm[resource_id]['cpucount'] / 1000000000.0)
-
-        try:
-            by_accgroup[ssm[resource_id]['gid']]['memory'] += int(ssm[resource_id]['memory'])
-        except KeyError:
-            by_accgroup[ssm[resource_id]['gid']]['memory'] = int(ssm[resource_id]['memory'])
-  
-        try:
-            by_accgroup[ssm[resource_id]['gid']]['net_in'] += float(ssm[resource_id]['network.incoming.bytes']['counter_value'] / 1073741824.0)
-        except KeyError:
-            try:
-                by_accgroup[ssm[resource_id]['gid']]['net_in'] = float(ssm[resource_id]['network.incoming.bytes']['counter_value'] / 1073741824.0)
-            except KeyError:
-                 by_accgroup[ssm[resource_id]['gid']]['net_in'] = 0
-
-        try:
-            by_accgroup[ssm[resource_id]['gid']]['net_out'] += float(ssm[resource_id]['network.outgoing.bytes']['counter_value'] / 1073741824.0)
-        except KeyError:
-            try:
-                by_accgroup[ssm[resource_id]['gid']]['net_out'] = float(ssm[resource_id]['network.outgoing.bytes']['counter_value'] / 1073741824.0)
-            except KeyError:
-                by_accgroup[ssm[resource_id]['gid']]['net_out'] = 0
+   report = "Last Update: %s\n" % strftime("%a, %d %b %Y %H:%M:%S", localtime())
+   report += '| *Accounting group* | *VMs* | *CPUs* | *disk* | *cpu time* | *memory* | *net in* | *net out* | \n'
+   by_accgroup = {}
+   for resource_id in ssm.keys():
+      if ssm[resource_id]['gid'] not in by_accgroup:
+         by_accgroup[ssm[resource_id]['gid']] = {'nvms': 0,
+                                                 'ncores': 0,
+                                                 'disk': 0,
+                                                 'cpucount': 0,
+                                                 'memory': 0,
+                                                 'net_in': 0,
+                                                 'net_out':0
+                                                }
+        
+      by_accgroup[ssm[resource_id]['gid']]['nvms'] += 1
+      by_accgroup[ssm[resource_id]['gid']]['ncores'] += int(ssm[resource_id]['vcpu'])  
+      by_accgroup[ssm[resource_id]['gid']]['disk'] += int(ssm[resource_id]['disk'])
+      by_accgroup[ssm[resource_id]['gid']]['cpucount'] += int(ssm[resource_id]['cpucount'] / 1000000000.0)  
+      by_accgroup[ssm[resource_id]['gid']]['memory'] += int(ssm[resource_id]['memory'])
+      by_accgroup[ssm[resource_id]['gid']]['net_in'] += float(ssm[resource_id]['network.incoming.bytes']['counter_value'] / 1073741824.0)  
+      by_accgroup[ssm[resource_id]['gid']]['net_out'] += float(ssm[resource_id]['network.outgoing.bytes']['counter_value'] / 1073741824.0) 
+        
 
 
-    for accgroup in by_accgroup.keys():
-       report += "| %s | %s | %s | %s | %s | %s | %s | %s |\n" % (accgroup, str(by_accgroup[accgroup]['nvms']), str(by_accgroup[accgroup]['ncores']), str(by_accgroup[accgroup]['disk']), str(by_accgroup[accgroup]['cpucount']), str(by_accgroup[accgroup]['memory']), str(by_accgroup[accgroup]['net_in']), str(by_accgroup[accgroup]['net_out']))
+   for accgroup in by_accgroup.keys():
+      report += "| %s | %s | %s | %s | %s | %s | %s | %s |\n" % (accgroup, 
+                                                                 str(by_accgroup[accgroup]['nvms']),
+                                                                 str(by_accgroup[accgroup]['ncores']),
+                                                                 str(by_accgroup[accgroup]['disk']),
+                                                                 str(by_accgroup[accgroup]['cpucount']),
+                                                                 str(by_accgroup[accgroup]['memory']),
+                                                                 str(by_accgroup[accgroup]['net_in']),
+                                                                 str(by_accgroup[accgroup]['net_out']))
 
-    return report
+   return report
 
 
 if __name__ == '__main__':
