@@ -304,8 +304,7 @@ def PrintSSMRecords(ssm, sitename, verbose, debug):
                 line += "StartTime: %d\n" % int(ssm[resource_id]['starttime'])
             except:
                 line += "StartTime: %d\n" % 0
-                if (debug):
-                    print >> sys.stderr, "DEBUG: starttime is not set. Skipping"
+                logging.debug("Starttime is not set. Skipping")
             try:
                 endtime = int(ssm[resource_id]['endtime'])
             except:
@@ -327,31 +326,26 @@ def PrintSSMRecords(ssm, sitename, verbose, debug):
                 line += "CpuCount: %d\n" % int(ssm[resource_id]['vcpu'])
             except:
                 line += "CpuCount: %d\n" % 0
-                if (debug):
-                    print >> sys.stderr, "DEBUG: cannot get cpu count. Skipping"
-                    print >> sys.stderr, ssm[resource_id]['vcpu']
+                logging.debug("Cannot get cpu count. Skipping")
+                logging.debug(ssm[resource_id]['vcpu'])
             line += "%s\n" % "NetworkType: NULL"
             try:
                 line += "NetworkInbound: %d\n" % int(0.5 + float(ssm[resource_id]['network.incoming.bytes']['counter_value']) / 1073741824.0)
             except:
-                if (debug):
-                    print >> sys.stderr, "DEBUG: Inbound traffic is not set. Skipping"
+                logging.debug("Inbound traffic is not set. Skipping")
             try:
                 line += "NetworkOutbound: %s\n" % int(0.5 + float(ssm[resource_id]['network.outgoing.bytes']['counter_value']) / 1073741824.0)
             except :
-                if (debug):
-                    print >> sys.stderr, "DEBUG: Outbound traffic is not set. Skipping"
+                logging.debug("Outbound traffic is not set. Skipping")
             try:
                 line += "Memory: %d\n" % int(ssm[resource_id]['memory'])
             except :
-                if (debug):
-                    print >> sys.stderr, "DEBUG: memory is not set. Skipping"
-                    print >> sys.stderr, ssm[resource_id]['memory']
+                logging.debug("Memory is not set. Skipping")
+                logging.debug(ssm[resource_id]['memory'])
             try:
                 line += "Disk: %d\n" % int(ssm[resource_id]['disk'])
             except:
-                if (debug):
-                    print >> sys.stderr, "DEBUG: disk is not set. Skipping"
+                logging.debug("Disk is not set. Skipping")
             # to be added later on
             # line += "GlobalUserName: %s\n" % "NULL"
             # line += "%s\n" % "FQAN: NULL"
