@@ -246,7 +246,7 @@ def ana_received_cpu_data(filter, mapping, report_groups, cpu_data, hide_names):
                         ssm_record[resource_id]['disk'] = disk
     except TypeError:
         logging.error('No CPU usage data information has been received')
-        exit(1)
+        sys.exit(1)
     return ssm_record
 
 def ana_received_net_data(ssm_record, filter, mapping, report_groups, net_data, hide_names):
