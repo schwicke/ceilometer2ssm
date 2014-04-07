@@ -403,30 +403,34 @@ def CreateReport(ssm):
 
    return report
 
-
+def parse_and_return_arguments():
+   aparser = argparse.ArgumentParser(description='Publish ceilometer records to APEL using SSM2')
+   aparser.add_argument('-p', '--publish', dest='publish', action='store_true', help='directly publish the data', default=False)
+   aparser.add_argument('-v', '--verbose', dest='verbose', action='store_true', help='be verbose', default=False)
+   aparser.add_argument('-d', '--debug', dest='debug', action='store_true', help='produce debugging output', default=False)
+   aparser.add_argument('-s', '--start', dest='start', action='store', help='start time for the publication', default="2013-09-20T00:00:00")
+   aparser.add_argument('-e', '--end', dest='end', action='store', help='end time for the publicatin', default="2013-09-20T23:59:59")
+   aparser.add_argument('-c', '--config', dest='configfile', action='store', help='ceilometer2ssm configuration file location', default="/etc/ceilometer2ssm.conf")
+   aparser.add_argument('-a', '--apelssmconfig', dest='apelssmconf', action='store', help='location of the apel-ssm configuration file', default='/etc/apel/sender.cfg')
+   aparser.add_argument('-l', '--localreport', dest='localreport', action='store_true', help='Create also a local report in Twiki format. Implies --nofilter', default=False)
+   aparser.add_argument('-n', '--nofilter', dest='nofilter', action='store_true', help='Do not filter the output for groups', default=False)
+   
+   args = aparser.parse_args()
+   
+   return (args.start,
+           args.end,
+           args.publish,
+           args.verbose,
+           args.debug,
+           args.configfile,
+           args.apelssmconf,
+           args.localreport,
+           args.nofilter
+                     )
 if __name__ == '__main__':
-    aparser = argparse.ArgumentParser(description='Publish ceilometer records to APEL using SSM2')
-    aparser.add_argument('-p', '--publish', dest='publish', action='store_true', help='directly publish the data', default=False)
-    aparser.add_argument('-v', '--verbose', dest='verbose', action='store_true', help='be verbose', default=False)
-    aparser.add_argument('-d', '--debug', dest='debug', action='store_true', help='produce debugging output', default=False)
-    aparser.add_argument('-s', '--start', dest='start', action='store', help='start time for the publication', default="2013-09-20T00:00:00")
-    aparser.add_argument('-e', '--end', dest='end', action='store', help='end time for the publicatin', default="2013-09-20T23:59:59")
-    aparser.add_argument('-c', '--config', dest='configfile', action='store', help='ceilometer2ssm configuration file location', default="/etc/ceilometer2ssm.conf")
-    aparser.add_argument('-a', '--apelssmconfig', dest='apelssmconf', action='store', help='location of the apel-ssm configuration file', default='/etc/apel/sender.cfg')
-    aparser.add_argument('-l', '--localreport', dest='localreport', action='store_true', help='Create also a local report in Twiki format. Implies --nofilter', default=False)
-    aparser.add_argument('-n', '--nofilter', dest='nofilter', action='store_true', help='Do not filter the output for groups', default=False)
-
-    args = aparser.parse_args()
-    start = args.start
-    end = args.end
-    publish = args.publish
-    verbose = args.verbose
-    debug = args.debug
-    configfile = args.configfile
-    apelssmconf = args.apelssmconf
-    localreport = args.localreport
-    nofilter = args.nofilter
     
+    (start, end, publish, verbose, debug, configfile, apelssmconf, localreport, nofilter) = parse_and_return_arguments()
+     
     if verbose:
        logging.basicConfig(level=logging.INFO)
     
@@ -436,7 +440,7 @@ if __name__ == '__main__':
     logging.debug('Debug mode is enabled: will not actually publish but just retrieve the data and report!')
 
     logging.info('Verbose output will be created')
-    logging.info("Reading configuration from %s")
+    logging.info("Reading configuration from %s" % configfile)
     logging.info("Records are processed between %s and %s" % (start, end))
     if (publish):
        logging.info('Resulting records will be published to APEL')
