@@ -282,7 +282,7 @@ def ana_received_net_data(ssm_record, filter, mapping, report_groups, net_data, 
                     ssm_record[resource_id][counter_name]['counter_value'] = netcount
     except TypeError:
         logging.error('No network usage data information has been received')
-        exit(1)
+        sys.exit(1)
     return ssm_record
 
 def PrintSSMRecords(ssm, sitename):
