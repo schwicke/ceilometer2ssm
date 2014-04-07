@@ -84,47 +84,48 @@ def auth_keystone(keystoneserver, username, password, tenant, cacert):
       sys.exit(1)
 
 def receive_data(keystone_response, start, end, meter):
-    decoded = json.loads(keystone_response)
-    tokenid = decoded['access']['token']['id']
-    uri = '/v2/meters/%s' % meter
-    for endpoint in decoded['access']['serviceCatalog']:
-        if (endpoint['name'] == 'ceilometer'):
-            for ceilometers in endpoint['endpoints']:
-                ceilometer_server = urlparse.urlparse(ceilometers['publicURL'])[1]
-                ceilometer_protocol = urlparse.urlparse(ceilometers['publicURL'])[0]
-                if ceilometer_protocol == 'https':
-                 NEWconn = httplib.HTTPSConnection
-                else:
-                 NEWconn = httplib.HTTPConnection
-                query = {'q':[{'field':'timestamp',
-                               'op':'ge',
-                               'value':start},
-                              {'field': 'timestamp',
-                               'op':'le',
-                               'value':end}
-                             ]
+   decoded = json.loads(keystone_response)
+   tokenid = decoded['access']['token']['id']
+   uri = '/v2/meters/%s' % meter
+   for endpoint in decoded['access']['serviceCatalog']:
+      if (endpoint['name'] == 'ceilometer'):
+         for ceilometers in endpoint['endpoints']:
+            ceilometer_server = urlparse.urlparse(ceilometers['publicURL'])[1]
+            ceilometer_protocol = urlparse.urlparse(ceilometers['publicURL'])[0]
+            if ceilometer_protocol == 'https':
+               NEWconn = httplib.HTTPSConnection
+            else:
+               NEWconn = httplib.HTTPConnection
+               query = {'q':[{'field':'timestamp',
+                              'op':'ge',
+                              'value':start},
+                             {'field': 'timestamp',
+                              'op':'le',
+                              'value':end}
+                            ]
+                       }
+               data = json.dumps(query)
+               header = {'Content-type': 'application/json',
+                         'X-Auth-Token': tokenid.encode('ascii', 'ignore')
                         }
-                data = json.dumps(query)
-                header = {'Content-type': 'application/json',
-                          'X-Auth-Token': tokenid.encode('ascii', 'ignore')
-                         }
-                req = 'GET'
+               req = 'GET'
                 
-                logging.debug("Query ceilometer server at: %s" % ceilometer_server)
-                logging.debug("Query it with: :%s" % json.dumps(query, indent=2))
+               logging.debug("Query ceilometer server at: %s" % ceilometer_server)
+               logging.debug("Query it with: :%s" % json.dumps(query, indent=2))
                 
-                try:
-                    get_cm_conn = NEWconn(ceilometer_server)
-                    try:
-                        get_cm_conn.request(req, uri, body=data, headers=header)
-                        res = get_cm_conn.getresponse()
-                        if res.status == 200:
-                            return json.loads(res.read())
-                    except:
-                        logging.error("Failed to query ceilometer server at %s" % ceilometers)
-                        sys.exit(1)
-                except:
-                    logging.error('failed to create the connection object')
+               try:
+                  get_cm_conn = NEWconn(ceilometer_server)
+                  try:
+                     get_cm_conn.request(req, uri, body=data, headers=header)
+                     res = get_cm_conn.getresponse()
+                     if res.status == 200:
+                        return json.loads(res.read())
+                  except:
+                     logging.error("Failed to query ceilometer server at %s" % ceilometers)
+                     sys.exit(1)
+               except:
+                  logging.error('failed to create the connection object')
+
 
 def get_uid(username):
     uid = 0
