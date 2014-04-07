@@ -281,14 +281,13 @@ def PrintSSMRecords(ssm, sitename, verbose, debug):
     line = "APEL-cloud-message: %s\n" % "v0.2"
     for resource_id in ssm.keys():
         if ssm[resource_id]:
-            if (verbose):
-                try:
-                    logging.info("reported period: from " + ssm[resource_id]['periodstart'] + " to " + ssm[resource_id]['periodend'])
-                except KeyError:
-                    logging.error("--------------------")
-                    logging.error("cannot find periodstart for resource " + resource_id)
-                    logging.error(json.dumps(ssm[resource_id], indent=2))
-                    logging.error("--------------------")
+            try:
+               logging.info("reported period: from " + ssm[resource_id]['periodstart'] + " to " + ssm[resource_id]['periodend'])
+            except KeyError:
+               logging.error("--------------------")
+               logging.error("cannot find periodstart for resource " + resource_id)
+               logging.error(json.dumps(ssm[resource_id], indent=2))
+               logging.error("--------------------")
             line += "VMUUID: %s\n" % ssm[resource_id]['vmuuid']
             line += "SiteName: %s\n" % sitename
             line += "MachineName: %s\n" % ssm[resource_id]['machinename']
