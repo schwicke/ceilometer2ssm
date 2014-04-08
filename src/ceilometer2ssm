@@ -274,9 +274,9 @@ def ana_received_net_data(ssm_record, filter, mapping, report_groups, net_data):
                logging.error("Unknown counter unit type %s" % record['counter_unit'])
                     
             if counter_name in ssm_record[resource_id]:
-               if (timestamp < ssm_record[resource_id][counter_name]['periodstart']):
+               if timestamp < ssm_record[resource_id][counter_name]['periodstart']:
                   ssm_record[resource_id][counter_name]['periodstart'] = timestamp
-               if (timestamp > ssm_record[resource_id][counter_name]['periodend']):
+               if timestamp > ssm_record[resource_id][counter_name]['periodend']:
                   ssm_record[resource_id][counter_name]['periodend'] = timestamp
                   ssm_record[resource_id][counter_name]['counter_value'] = netcount                            
             else:
