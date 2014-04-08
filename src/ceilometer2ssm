@@ -290,7 +290,7 @@ def ana_received_net_data(ssm_record, filter, mapping, report_groups, net_data):
    return ssm_record
 
 
-def PrintSSMRecords(ssm, sitename):
+def print_ssm_records(ssm, sitename):
    line = "APEL-cloud-message: %s\n" % "v0.2"
    for resource_id in ssm.keys():
       if ssm[resource_id]:
