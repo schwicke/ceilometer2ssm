@@ -375,7 +375,7 @@ def print_ssm_records(ssm, sitename):
          line += "%s\n" % "%%"
    return line
 
-def CreateReport(ssm):
+def create_report(ssm):
    report = "Last Update: %s\n" % strftime("%a, %d %b %Y %H:%M:%S", localtime())
    report += '| *Accounting group* | *VMs* | *CPUs* | *disk* | *cpu time* | *memory* | *net in* | *net out* | \n'
    by_accgroup = {}
