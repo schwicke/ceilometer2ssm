@@ -505,8 +505,8 @@ def retrieve_data(keystone_response, start , end ):
 def analyse_data(filtered, mapping, report_groups, hide_names, cpu_used, net_in, net_out):
    logging.info('analysing data')
    ssm_filtered = ana_received_cpu_data(filtered, mapping, report_groups, cpu_used, hide_names)
-   ssm_filtered = ana_received_net_data(ssm_filtered, filtered, mapping, report_groups, net_in, hide_names)
-   ssm_filtered = ana_received_net_data(ssm_filtered, filtered, mapping, report_groups, net_out, hide_names)  
+   ssm_filtered = ana_received_net_data(ssm_filtered, filtered, mapping, report_groups, net_in)
+   ssm_filtered = ana_received_net_data(ssm_filtered, filtered, mapping, report_groups, net_out)  
    
 def print_local_report(mapping, report_groups, hide_names, cpu_used, net_in, net_out):
    logging.info('analysing all data')
