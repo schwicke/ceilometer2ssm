@@ -138,17 +138,18 @@ def get_uid(username):
 
 
 def get_accgroup(filter, mapping, report_groups, project):
-    # return the accounting group
-    try:
-        gid = mapping[project]["group"]
-        if (filter):
-            try: 
-                report_groups.index(gid)
-            except:
-                gid = 'unset'
-    except:
-        gid = 'unknown'
-    return gid 
+   # return the accounting group
+   try:
+      gid = mapping[project]['group']
+      if (filter):
+         try: 
+            report_groups.index(gid)
+         except:
+            gid = 'unset'
+   except:
+      gid = 'unknown'
+   return gid 
+
 
 def get_tenant(mapping, project):
     # return the accounting group
