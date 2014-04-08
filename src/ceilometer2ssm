@@ -587,7 +587,7 @@ if __name__ == '__main__':
     #
     # print the result
     #
-    records = PrintSSMRecords(ssm_filtered, sitename)
+    records = print_ssm_records(ssm_filtered, sitename)
     logging.info(records)
 
     if (localreport):
