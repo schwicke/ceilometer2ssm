@@ -199,26 +199,22 @@ def generate_ssm_record(record, mapping, gid, hide_names):
                 
    if timestamp < ssm_record[resource_id]['periodstart']:
       ssm_record[resource_id]['periodstart'] = timestamp
-   else:
-      if timestamp >= ssm_record[resource_id]['periodend']:
-         logging.debug("Updating record %s start: %s end : %s" % (resource_id, ssm_record[resource_id]['periodstart'], timestamp))
+   elif timestamp >= ssm_record[resource_id]['periodend']:
+      logging.debug("Updating record %s start: %s end : %s" % (resource_id, ssm_record[resource_id]['periodstart'], timestamp))
                      
-         ssm_record[resource_id]['periodend'] = timestamp
-         ssm_record[resource_id]['tenant'] = get_tenant(mapping, record['project_id'])
-         ssm_record[resource_id]['vmuuid'] = resource_id
-         ssm_record[resource_id]['uid'] = record['user_id']
-         ssm_record[resource_id]['gid'] = gid 
-         ssm_record[resource_id]['vcpu'] = record['resource_metadata']['vcpus']
-         ssm_record[resource_id]['memory'] = record['resource_metadata']['memory_mb']
-         ssm_record[resource_id]['disk'] = record['resource_metadata']['disk_gb']
-                        
-         
-         generate_optional_fields_ssm_record(ssm_record[resource_id],record)               
-         hide_names_from_ssm_record(ssm_record[resource_id], record, hide_names)
-                            
-         
-         
+      ssm_record[resource_id]['periodend'] = timestamp
+      ssm_record[resource_id]['tenant'] = get_tenant(mapping, record['project_id'])
+      ssm_record[resource_id]['vmuuid'] = resource_id
+      ssm_record[resource_id]['uid'] = record['user_id']
+      ssm_record[resource_id]['gid'] = gid 
+      ssm_record[resource_id]['vcpu'] = record['resource_metadata']['vcpus']
+      ssm_record[resource_id]['memory'] = record['resource_metadata']['memory_mb']
+      ssm_record[resource_id]['disk'] = record['resource_metadata']['disk_gb']
+               
+      generate_optional_fields_ssm_record(ssm_record[resource_id],record)               
+      hide_names_from_ssm_record(ssm_record[resource_id], record, hide_names)
    return ssm_record
+
 
 def generate_optional_fields_ssm_record(ssm_record , record):
    if 'image_ref_url' in record['resource_metadata']:
