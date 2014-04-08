@@ -256,40 +256,41 @@ def hide_names_from_ssm_record(ssm_record, record , hide_names):
          ssm_record['machinename'] = record['resource_metadata']['display_name']
          
          
-def ana_received_net_data(ssm_record, filter, mapping, report_groups, net_data, hide_names):
-    #
-    # filter for start and end records
-    #
-    try:
-        for record in net_data:
-            gid = get_accgroup(filter, mapping, report_groups, record['project_id'])
-            if (gid == 'unset' or (filter and (gid == 'NULL'))):
-                pass
+def ana_received_net_data(ssm_record, filter, mapping, report_groups, net_data):
+   #
+   # filter for start and end records
+   #
+   try:
+      for record in net_data:
+         gid = get_accgroup(filter, mapping, report_groups, record['project_id'])
+         if (gid == 'unset' or (filter and (gid == 'NULL'))):
+            pass
+         else:
+            # memorize relevant data and find start and end record
+            resource_id = record['resource_metadata']['instance_id']
+            timestamp = record['timestamp']
+            counter_name = record['counter_name']
+            if record['counter_unit'] == 'B':
+               netcount = record['counter_volume']
             else:
-                # memorize relevant data and find start and end record
-                resource_id = record['resource_metadata']['instance_id']
-                timestamp = record['timestamp']
-                counter_name = record['counter_name']
-                if record['counter_unit'] == 'B':
-                    netcount = record['counter_volume']
-                else:
-                    logging.error("Unknown counter unit type %s" % record['counter_unit'])
+               logging.error("Unknown counter unit type %s" % record['counter_unit'])
                     
-                if counter_name in ssm_record[resource_id][counter_name]:
-                   if (timestamp < ssm_record[resource_id][counter_name]['periodstart']):
-                      ssm_record[resource_id][counter_name]['periodstart'] = timestamp
-                   if (timestamp > ssm_record[resource_id][counter_name]['periodend']):
-                      ssm_record[resource_id][counter_name]['periodend'] = timestamp
-                      ssm_record[resource_id][counter_name]['counter_value'] = netcount                            
-                else:
-                   ssm_record[resource_id][counter_name] = {}
-                   ssm_record[resource_id][counter_name]['periodstart'] = timestamp                    
-                   ssm_record[resource_id][counter_name]['periodend'] = timestamp
-                   ssm_record[resource_id][counter_name]['counter_value'] = netcount
-    except TypeError:
-        logging.error('No network usage data information has been received')
-        sys.exit(1)
-    return ssm_record
+            if counter_name in ssm_record[resource_id]:
+               if (timestamp < ssm_record[resource_id][counter_name]['periodstart']):
+                  ssm_record[resource_id][counter_name]['periodstart'] = timestamp
+               if (timestamp > ssm_record[resource_id][counter_name]['periodend']):
+                  ssm_record[resource_id][counter_name]['periodend'] = timestamp
+                  ssm_record[resource_id][counter_name]['counter_value'] = netcount                            
+            else:
+               ssm_record[resource_id][counter_name] = {}
+               ssm_record[resource_id][counter_name]['periodstart'] = timestamp                    
+               ssm_record[resource_id][counter_name]['periodend'] = timestamp
+               ssm_record[resource_id][counter_name]['counter_value'] = netcount
+   except TypeError:
+      logging.error('No network usage data information has been received')
+      sys.exit(1)
+   return ssm_record
+
 
 def PrintSSMRecords(ssm, sitename):
     line = "APEL-cloud-message: %s\n" % "v0.2"
