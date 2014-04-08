@@ -263,9 +263,7 @@ def ana_received_net_data(ssm_record, filter, mapping, report_groups, net_data):
    try:
       for record in net_data:
          gid = get_accgroup(filter, mapping, report_groups, record['project_id'])
-         if (gid == 'unset' or (filter and (gid == 'NULL'))):
-            pass
-         else:
+         if not (gid == 'unset' or (filter and (gid == 'NULL'))):
             # memorize relevant data and find start and end record
             resource_id = record['resource_metadata']['instance_id']
             timestamp = record['timestamp']
