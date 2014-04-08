@@ -212,37 +212,40 @@ def generate_ssm_record(record, mapping, gid, hide_names):
          ssm_record[resource_id]['memory'] = record['resource_metadata']['memory_mb']
          ssm_record[resource_id]['disk'] = record['resource_metadata']['disk_gb']
                         
-         if 'image_ref_url' in record['resource_metadata']:
-            ssm_record[resource_id]['imageid'] = record['resource_metadata']['image_ref_url']
-                        
-         if 'state' in record['resource_metadata']:
-            ssm_record[resource_id]['state'] = state_map[record['resource_metadata']['state']]
-                        
-         if 'created_at' in record['resource_metadata']:
-            ssm_record[resource_id]['starttime'] = parser.parse(record['resource_metadata']['created_at']).strftime("%s")                          
-                        
-         if 'deleted_at' in record['resource_metadata']:
-            # ssm_record[resource_id]['endtime'] = parser.parse(record['resource_metadata']['deleted_at']).strftime("%s")
-            endtime = parser.parse(record['resource_metadata']['deleted_at']).strftime("%s")
-            # machine terminated 
-            ssm_record[resource_id]['state'] = 'completed'
-                          
-         if 'endtime' in ssm_record[resource_id]:  
-            if ssm_record[resource_id]['endtime'] > endtime:
-               ssm_record[resource_id]['endtime'] = endtime
-            else:
-               ssm_record[resource_id]['endtime'] = endtime
-                        
-         if record['counter_unit'] == 'ns':
-            ssm_record[resource_id]['cpucount'] = record['counter_volume']
-         else:
-            logging.error("Unknown counter unit type %s" % record['counter_unit'])
-                        
+         
+         generate_optional_fields_ssm_record(ssm_record[resource_id],record)               
          hide_names_from_ssm_record(ssm_record[resource_id], record, hide_names)
                             
          
          
    return ssm_record
+
+def generate_optional_fields_ssm_record(ssm_record , record):
+   if 'image_ref_url' in record['resource_metadata']:
+      ssm_record['imageid'] = record['resource_metadata']['image_ref_url']
+                        
+   if 'state' in record['resource_metadata']:
+      ssm_record['state'] = state_map[record['resource_metadata']['state']]
+                        
+   if 'created_at' in record['resource_metadata']:
+      ssm_record['starttime'] = parser.parse(record['resource_metadata']['created_at']).strftime("%s")                          
+                        
+   if 'deleted_at' in record['resource_metadata']:
+      # ssm_record[resource_id]['endtime'] = parser.parse(record['resource_metadata']['deleted_at']).strftime("%s")
+      endtime = parser.parse(record['resource_metadata']['deleted_at']).strftime("%s")
+      # machine terminated 
+      ssm_record['state'] = 'completed'
+                          
+      if 'endtime' in ssm_record and ssm_record['endtime'] > endtime:  
+         ssm_record['endtime'] = endtime
+      else:
+         ssm_record['endtime'] = endtime
+                        
+   if record['counter_unit'] == 'ns':
+      ssm_record['cpucount'] = record['counter_volume']
+   else:
+      logging.error("Unknown counter unit type %s" % record['counter_unit'])   
+
 
 def hide_names_from_ssm_record(ssm_record, record , hide_names):
    if hide_names:
