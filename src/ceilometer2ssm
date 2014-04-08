@@ -141,7 +141,7 @@ def get_accgroup(filter, mapping, report_groups, project):
    # return the accounting group
    try:
       gid = mapping[project]['group']
-      if (filter):
+      if filter:
          try: 
             report_groups.index(gid)
          except:
