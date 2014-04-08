@@ -507,6 +507,7 @@ def analyse_data(filtered, mapping, report_groups, hide_names, cpu_used, net_in,
    ssm_filtered = ana_received_cpu_data(filtered, mapping, report_groups, cpu_used, hide_names)
    ssm_filtered = ana_received_net_data(ssm_filtered, filtered, mapping, report_groups, net_in)
    ssm_filtered = ana_received_net_data(ssm_filtered, filtered, mapping, report_groups, net_out)  
+   return ssm_filtered
    
 def print_local_report(mapping, report_groups, hide_names, cpu_used, net_in, net_out):
    logging.info('analysing all data')
