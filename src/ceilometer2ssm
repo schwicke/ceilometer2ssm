@@ -152,12 +152,12 @@ def get_accgroup(filter, mapping, report_groups, project):
 
 
 def get_tenant(mapping, project):
-    # return the accounting group
-    try:
-        tenant = mapping[project]['name']
-    except:
-        tenant = 'NULL'
-    return tenant 
+   # return the accounting group
+   try:
+      tenant = mapping[project]['name']
+   except:
+      tenant = 'NULL'
+   return tenant 
 
 
 def ana_received_cpu_data(filter, mapping, report_groups, cpu_data, hide_names):
