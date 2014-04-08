@@ -310,7 +310,7 @@ def PrintSSMRecords(ssm, sitename):
          line += "GlobalUserName: NULL\n"
          line += "FQAN: NULL\n"
             
-         if (ssm[resource_id]['state'] == "running"):
+         if ssm[resource_id]['state'] == "running":
             line += "Status: %s\n" % "NULL"
          else:
             line += "Status: %s\n" % ssm[resource_id]['state']
@@ -328,7 +328,7 @@ def PrintSSMRecords(ssm, sitename):
             endtime = 0
          line += "EndTime: %d\n" % int(endtime)
 
-         if (endtime > 0 and starttime > 0):
+         if endtime > 0 and starttime > 0:
             walltime = endtime - starttime
          else:
             walltime = int(ssm[resource_id]['periodend']) - starttime
