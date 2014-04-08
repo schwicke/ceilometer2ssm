@@ -291,89 +291,89 @@ def ana_received_net_data(ssm_record, filter, mapping, report_groups, net_data):
 
 
 def PrintSSMRecords(ssm, sitename):
-    line = "APEL-cloud-message: %s\n" % "v0.2"
-    for resource_id in ssm.keys():
-        if ssm[resource_id]:
-            if 'periodstart' in ssm[resource_id] and 'periodend' in ssm[resource_id]:
-               logging.info("reported period: from %s to %s" % (ssm[resource_id]['periodstart'], ssm[resource_id]['periodend']))
-            else:
-               logging.error('--------------------')
-               logging.error("cannot find periodstart for resource %s" % resource_id)
-               logging.error(json.dumps(ssm[resource_id], indent=2))
-               logging.error('--------------------')
+   line = "APEL-cloud-message: %s\n" % "v0.2"
+   for resource_id in ssm.keys():
+      if ssm[resource_id]:
+         if 'periodstart' in ssm[resource_id] and 'periodend' in ssm[resource_id]:
+            logging.info("reported period: from %s to %s" % (ssm[resource_id]['periodstart'], ssm[resource_id]['periodend']))
+         else:
+            logging.error('--------------------')
+            logging.error("cannot find periodstart for resource %s" % resource_id)
+            logging.error(json.dumps(ssm[resource_id], indent=2))
+            logging.error('--------------------')
                
-            line += "VMUUID: %s\n" % ssm[resource_id]['vmuuid']
-            line += "SiteName: %s\n" % sitename
-            line += "MachineName: %s\n" % ssm[resource_id]['machinename']
-            line += "LocalUserId: %s\n" % str(ssm[resource_id]['uid'])
-            line += "LocalGroupId: %s\n" % str(ssm[resource_id]['gid'])
-            line += "GlobalUserName: NULL\n"
-            line += "FQAN: NULL\n"
+         line += "VMUUID: %s\n" % ssm[resource_id]['vmuuid']
+         line += "SiteName: %s\n" % sitename
+         line += "MachineName: %s\n" % ssm[resource_id]['machinename']
+         line += "LocalUserId: %s\n" % str(ssm[resource_id]['uid'])
+         line += "LocalGroupId: %s\n" % str(ssm[resource_id]['gid'])
+         line += "GlobalUserName: NULL\n"
+         line += "FQAN: NULL\n"
             
-            if (ssm[resource_id]['state'] == "running"):
-                line += "Status: %s\n" % "NULL"
-            else:
-                line += "Status: %s\n" % ssm[resource_id]['state']
+         if (ssm[resource_id]['state'] == "running"):
+            line += "Status: %s\n" % "NULL"
+         else:
+            line += "Status: %s\n" % ssm[resource_id]['state']
             
-            if 'starttime' in ssm[resource_id]:
-                starttime = int(ssm[resource_id]['starttime'])
-            else:
-                starttime = 0
-                logging.debug('Starttime is not set. Skipping')
-            line += "StartTime: %d\n" % starttime    
+         if 'starttime' in ssm[resource_id]:
+            starttime = int(ssm[resource_id]['starttime'])
+         else:
+            starttime = 0
+            logging.debug('Starttime is not set. Skipping')
+         line += "StartTime: %d\n" % starttime    
             
-            if 'endtime' in ssm[resource_id]:
-                endtime = int(ssm[resource_id]['endtime'])
-            else:
-                endtime = 0
-            line += "EndTime: %d\n" % int(endtime)
+         if 'endtime' in ssm[resource_id]:
+            endtime = int(ssm[resource_id]['endtime'])
+         else:
+            endtime = 0
+         line += "EndTime: %d\n" % int(endtime)
 
-            if (endtime > 0 and starttime > 0):
-              walltime = endtime - starttime
-            else:
-              walltime = int(ssm[resource_id]['periodend']) - starttime
+         if (endtime > 0 and starttime > 0):
+            walltime = endtime - starttime
+         else:
+            walltime = int(ssm[resource_id]['periodend']) - starttime
 
-            line += "WallDuration: %d\n" % int(walltime)
-            line += "CpuDuration: %d\n" % int(0.5 + float(ssm[resource_id]['cpucount']) / 1000000000.0)
+         line += "WallDuration: %d\n" % int(walltime)
+         line += "CpuDuration: %d\n" % int(0.5 + float(ssm[resource_id]['cpucount']) / 1000000000.0)
             
-            if 'vcpu' in ssm[resource_id]:
-                line += "CpuCount: %d\n" % int(ssm[resource_id]['vcpu'])
-            else:
-                line += "CpuCount: %d\n" % 0
-                logging.debug('Cannot get cpu count. Skipping')
-                logging.debug(ssm[resource_id]['vcpu'])
+         if 'vcpu' in ssm[resource_id]:
+            line += "CpuCount: %d\n" % int(ssm[resource_id]['vcpu'])
+         else:
+            line += "CpuCount: %d\n" % 0
+            logging.debug('Cannot get cpu count. Skipping')
+            logging.debug(ssm[resource_id]['vcpu'])
             
-            line += "%s\n" % 'NetworkType: NULL'
+         line += "%s\n" % 'NetworkType: NULL'
             
-            if 'network.incoming.bytes' in ssm[resource_id]:
-                line += "NetworkInbound: %d\n" % int(0.5 + float(ssm[resource_id]['network.incoming.bytes']['counter_value']) / 1073741824.0)
-            else:
-                logging.debug('Inbound traffic is not set. Skipping')
+         if 'network.incoming.bytes' in ssm[resource_id]:
+            line += "NetworkInbound: %d\n" % int(0.5 + float(ssm[resource_id]['network.incoming.bytes']['counter_value']) / 1073741824.0)
+         else:
+            logging.debug('Inbound traffic is not set. Skipping')
             
-            if 'network.outgoing.bytes' in ssm[resource_id]:
-                line += "NetworkOutbound: %s\n" % int(0.5 + float(ssm[resource_id]['network.outgoing.bytes']['counter_value']) / 1073741824.0)
-            else:
-                logging.debug('Outbound traffic is not set. Skipping')
+         if 'network.outgoing.bytes' in ssm[resource_id]:
+            line += "NetworkOutbound: %s\n" % int(0.5 + float(ssm[resource_id]['network.outgoing.bytes']['counter_value']) / 1073741824.0)
+         else:
+            logging.debug('Outbound traffic is not set. Skipping')
             
-            if 'memory' in ssm[resource_id]:
-                line += "Memory: %d\n" % int(ssm[resource_id]['memory'])
-            else:
-                logging.debug('Memory is not set. Skipping')
-                logging.debug(ssm[resource_id]['memory'])
+         if 'memory' in ssm[resource_id]:
+            line += "Memory: %d\n" % int(ssm[resource_id]['memory'])
+         else:
+            logging.debug('Memory is not set. Skipping')
+            logging.debug(ssm[resource_id]['memory'])
             
-            if 'disk' in ssm[resource_id]:
-                line += "Disk: %d\n" % int(ssm[resource_id]['disk'])
-            else:
-                logging.debug('Disk is not set. Skipping')
-            # to be added later on
-            # line += "GlobalUserName: %s\n" % "NULL"
-            # line += "%s\n" % "FQAN: NULL"
-            # line += "SuspendDuration: %s\n" % "NULL"
-            line += "StorageRecordId: %s\n" % "NULL"
-            line += "ImageId: %s\n" % str(ssm[resource_id]['imageid'])
-            line += "CloudType: %s\n" % "OpenStack"
-            line += "%s\n" % "%%"
-    return line
+         if 'disk' in ssm[resource_id]:
+            line += "Disk: %d\n" % int(ssm[resource_id]['disk'])
+         else:
+            logging.debug('Disk is not set. Skipping')
+         # to be added later on
+         # line += "GlobalUserName: %s\n" % "NULL"
+         # line += "%s\n" % "FQAN: NULL"
+         # line += "SuspendDuration: %s\n" % "NULL"
+         line += "StorageRecordId: %s\n" % "NULL"
+         line += "ImageId: %s\n" % str(ssm[resource_id]['imageid'])
+         line += "CloudType: %s\n" % "OpenStack"
+         line += "%s\n" % "%%"
+   return line
 
 def CreateReport(ssm):
    report = "Last Update: %s\n" % strftime("%a, %d %b %Y %H:%M:%S", localtime())
