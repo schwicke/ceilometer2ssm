@@ -128,13 +128,14 @@ def receive_data(keystone_response, start, end, meter):
 
 
 def get_uid(username):
-    uid = 0
-    try:
-        uid = getpwnam(username).pw_uid
-    except:
-        logging.error("Cannot find uid for %s" % username)
-        uid = getpwnam('nobody').pw_uid
-    return uid 
+   uid = 0
+   try:
+      uid = getpwnam(username).pw_uid
+   except:
+      logging.error("Cannot find uid for %s" % username)
+      uid = getpwnam('nobody').pw_uid
+   return uid 
+
 
 def get_accgroup(filter, mapping, report_groups, project):
     # return the accounting group
