@@ -14,7 +14,18 @@ from dirq.QueueSimple import QueueSimple
 import argparse
 import subprocess
 import shlex
+import logging
 from time import localtime, strftime
+ceilo_log_file = "/var/log/ceilometer2ssm.log"
+log_level = logging.DEBUG
+lgr = logging.getLogger('ceilo_script')
+lgr.setLevel(log_level)
+fh = logging.FileHandler(ceilo_log_file)
+fh.setLevel(log_level)
+frmt = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+fh.setFormatter(frmt)
+lgr.addHandler(fh)
+
 
 state_map = {
     # from https://wiki.egi.eu/wiki/Fedcloud-tf:WorkGroups:Scenario4
@@ -57,6 +68,7 @@ def read_config(filename):
         exit(1)
         
 def auth_keystone(keystoneserver, username, password, tenant, debug ):
+    lgr.debug("Ceilometer authentication v2 vineeth")
     auth='{"auth":{"passwordCredentials":{"username":"'+username+'","password":"'+password+'"}}}'
     buf = cStringIO.StringIO()
     c = pycurl.Curl()
@@ -80,6 +92,7 @@ def auth_keystone(keystoneserver, username, password, tenant, debug ):
         exit(1)
 
 def auth_keystone_v3(keystoneserver, username, password, domain, tenant, token, debug ):
+    lgr.debug("Ceilomter authentication v3")
     if (token):
         auth='{"auth":{"scope": {"project": {"id":"'+tenant+'"}},"identity":{"methods":["token"],"token":{"id": "'+token+'"}}}}'
     else:
@@ -93,6 +106,7 @@ def auth_keystone_v3(keystoneserver, username, password, domain, tenant, token, 
       print "keystone auth request for v3 user" + username + " project: "+tenant 
     buf    = cStringIO.StringIO()
     header = cStringIO.StringIO()
+    lgr.debug("keystone auth request for v3 user" + username + " project: "+tenant) 
     c = pycurl.Curl()
     c.setopt(c.URL, endpoint.encode('ascii','ignore'))
     c.setopt(c.FOLLOWLOCATION, 1)
@@ -107,11 +121,15 @@ def auth_keystone_v3(keystoneserver, username, password, domain, tenant, token, 
         answer=buf.getvalue()
         if (debug):
            print answer
+        lgr.debug("The keystone response is ")
+        #lgr.debug(answer)
         response = header.getvalue()
         headers = dict(re.findall(r"(?P<name>.*?): (?P<value>.*?)\r\n", response))
         if (debug):
           print headers
         token = headers["X-Subject-Token"]
+        lgr.debug(" the token is ")
+        #lgr.debug(token)
         buf.close()
         header.close()
         if (debug):
@@ -123,6 +141,7 @@ def auth_keystone_v3(keystoneserver, username, password, domain, tenant, token, 
         exit(1)
 
 def auth_keystone2(keystoneserver, username, password, tenant, debug ):
+    lgr.debug("Ceilometer authentication v2 ulrich")
     auth='\'{"auth":{"passwordCredentials":{"username":"'+username+'","password":"'+password+'"}}}\''
     auth_server = urlparse.urlparse(keystoneserver)[1]
     auth_protocol = urlparse.urlparse(keystoneserver)[0]
@@ -185,6 +204,10 @@ def GetTenantsFromKeystone(verbose,debug,auth_url,keystone_response,tokenid):
             get_cm_conn.request( req, uri, body=data, headers=header )
             res = get_cm_conn.getresponse()
             if res.status == 200:
+                #tenantResult=json.loads(res.read());
+                lgr.debug("the tenant result is ")
+                lgr.debug(res);
+                lgr.debug("the tenant result display over ")
                 return json.loads( res.read() )
         except:
             print >> sys.stderr, "Failed to query keystone server at " + ceilometers
@@ -204,6 +227,9 @@ def receive_data(verbose,debug,keystone_response,tokenid,start,end,meter):
             for ceilometers in endpoint["endpoints"]:
                 if ceilometers["interface"] == "public":
                     ceilometer_server = urlparse.urlparse(ceilometers["url"])[1]
+                    lgr.debug("ceilometer url uuuuuuuuuuuuuuuuuuuuuu.........................");
+                    lgr.debug(ceilometer_server)
+                    lgr.debug("ovvvvvvvvvvvvvvv")
                     ceilometer_protocol = urlparse.urlparse(ceilometers["url"])[0]
                     if ceilometer_protocol == "https":
                         NEWconn = httplib.HTTPSConnection
@@ -606,10 +632,11 @@ def CreateReport(ssm,verbose,debug):
     return report
 
 
-
+lgr.debug('The ceilometer Polling will start')
 aparser = argparse.ArgumentParser(description='Publish ceilometer records to APEL using SSM2')
 aparser.add_argument('-p', '--publish', dest='publish', action='store_true', help='directly publish the data',default=False)
 aparser.add_argument('-v', '--verbose', dest='verbose', action='store_true', help='be verbose',default=False)
+aparser.add_argument('-j', '--json', dest='json', action='store_true', help='print the metric records in json',default=False)
 aparser.add_argument('-d', '--debug', dest='debug', action='store_true', help='produce debugging output',default=False)
 aparser.add_argument('-s', '--start', dest='start', action='store',help='start time for the publication',default="1970-01-01T00:00:00")
 aparser.add_argument('-e', '--end', dest='end', action='store', help='end time for the publicatin',default="2020-12-24T23:59:59")
@@ -618,6 +645,7 @@ aparser.add_argument('-a', '--apelssmconfig',dest='apelssmconf',action='store', 
 aparser.add_argument('-l', '--localreport',dest='localreport',action='store_true', help='Create also a local report in Twiki format. Implies --nofilter', default=False)
 aparser.add_argument('-n', '--nofilter',dest='nofilter',action='store_true', help='Do not filter the output for groups', default=False)
 
+lgr.debug('The ceilometer parsing is over')
 args = aparser.parse_args()
 start = args.start
 end = args.end
@@ -628,6 +656,7 @@ configfile = args.configfile
 apelssmconf = args.apelssmconf
 localreport = args.localreport
 nofilter = args.nofilter
+only_json = args.json
 
 if (debug):
     verbose = True
@@ -653,7 +682,7 @@ try:
     secrets = config["secrets"]
 except:
     if (verbose):
-        print >> sys.stderr, "No secrets defined in the configuration file"
+        print >> sys.stderr, "ERROR: No secrets defined in the configuration file"
     
 try:
     os_auth_url=secrets["os_auth_url"]
@@ -704,6 +733,9 @@ if (debug):
     print >> sys.stderr, json.dumps(init_auth, indent=2)
 
 tenants = GetTenantsFromKeystone(verbose,debug,os_auth_url,init_auth,init_token)
+tenantResults=json.dumps(tenants);
+lgr.debug("the tenant results in the proper form ******************")
+lgr.debug(tenantResults);
 if (debug):
     print >> sys.stderr, json.dumps(tenants, indent=2)
 
@@ -722,16 +754,31 @@ for tenant in tenants["tenants"]:
     (token, auth)   =  auth_keystone_v3(os_auth_url,os_username,os_password,"default",tenant_id,init_token,debug)
       
     cpu_used = receive_data(verbose,debug,auth,token,start,end,'cpu')
-    if (debug):
-          print  json.dumps(cpu_used, indent=2)
+    #if (debug) or (only_json):
+          #print  json.dumps(cpu_used, indent=2)
     net_in   = receive_data(verbose,debug,auth,token,start,end,'network.incoming.bytes')
     net_out  = receive_data(verbose,debug,auth,token,start,end,'network.outgoing.bytes')
-  
+    if(debug) or (only_json):
+    	#cpu_used_json=json.dumps(cpu_used,indent=2)
+        #net_in_json=json.dumps(net_in,indent=2)
+        #net_out_json=json.dumps(net_out,indent=2)
+        completeResult={"cpu": cpu_used,"net_in":net_in,"net_out":net_out}
+        #completeResult={"net_out":net_out}
+        completeResultInJson=json.dumps(completeResult)
+        lgr.debug(completeResultInJson)
+        print completeResultInJson
     if (verbose):
           print >> sys.stderr, "analysing data"
     ssm_filtered =  ana_received_cpu_data(verbose,debug, ssm_filtered, nofilter, mapping, report_groups, cpu_used,hide_names)
+    lgr.debug("ssm-1");
+    lgr.debug(ssm_filtered);
+
     ssm_filtered =  ana_received_net_data(verbose,debug, ssm_filtered, nofilter, mapping, report_groups, net_in,  hide_names)
+    lgr.debug("ssm-2");
+    lgr.debug(ssm_filtered);
     ssm_filtered =  ana_received_net_data(verbose,debug, ssm_filtered, nofilter, mapping, report_groups, net_out, hide_names)
+    lgr.debug("ssm-3")
+    lgr.debug(ssm_filtered)
   
     if (localreport):
         nofilter = True
@@ -746,6 +793,8 @@ for tenant in tenants["tenants"]:
 #
 
 records = PrintSSMRecords(ssm_filtered, sitename, verbose, debug)
+lgr.debug("the printed results ");
+lgr.debug(records);
 if verbose:
     print >> sys.stderr, records
 
@@ -770,3 +819,4 @@ if (publish):
             print >> sys.stderr, "ERROR: Failed to send the message"
             sys.exit(1)
             
+
