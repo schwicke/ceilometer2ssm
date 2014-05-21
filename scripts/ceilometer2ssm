@@ -1,8 +1,853 @@
-/var/log/cloudaccounting.log {
-    weekly
-    missingok
-    notifempty
-    sharedscripts
-    rotate 2
-    compress
-}
+#!/usr/bin/env python
+import httplib
+import urllib
+import json
+import cStringIO
+import pycurl
+import re
+import os
+import sys
+from pwd import getpwnam  
+from dateutil import parser
+import urlparse
+from dirq.QueueSimple import QueueSimple
+import argparse
+import subprocess
+import shlex
+from time import localtime, strftime
+
+junk = re.compile('^nova')
+state_map = {
+    # from https://wiki.egi.eu/wiki/Fedcloud-tf:WorkGroups:Scenario4
+    "active": "started",
+    "build": "started",
+    "deleted": "completed",
+    "error": "error",
+    "hard_reboot": "started",
+    "migrating": "started",
+    "paused": "paused",
+    "reboot": "started",
+    "rebuild": "started",
+    "confirming_resize": "started",
+    "rescue": "started",
+    "resize": "started",
+    "revert_resize": "started",
+    "password": "started",
+    "verify_resize": "started",
+    "shutoff": "completed",
+    "suspended": "suspended",
+    "terminated": "completed",
+    "stopped": "completed",
+    "saving": "started"
+    }
+
+
+def read_config(filename):
+    # read the mapping of project-id to accounting group from a file
+    try:
+        f = open(filename,"r")
+        try:
+            result=json.loads(f.read())
+            f.close
+            return result
+        except:
+            print >> sys.stderr, 'ERROR: Cannot parse configuration file ' + filename
+            exit(1)
+    except IOError:
+        print >> sys.stderr, 'ERROR: Cannot open configuration file ' + filename
+        exit(1)
+        
+def auth_keystone(keystoneserver, username, password, tenant, debug ):
+    auth='{"auth":{"passwordCredentials":{"username":"'+username+'","password":"'+password+'"}}}'
+    buf = cStringIO.StringIO()
+    c = pycurl.Curl()
+    c.setopt(c.URL, keystoneserver.encode('ascii','ignore'))
+    c.setopt(c.FOLLOWLOCATION, 1)
+    c.setopt(c.MAXREDIRS, 5)
+    c.setopt(c.WRITEFUNCTION, buf.write)
+    #c.setopt(c.CAINFO,cacert.encode('ascii','ignore'))
+    c.setopt(c.HTTPHEADER, ['Accept: application/json', 'Content-Type: application/json'])
+    c.setopt(c.POSTFIELDS, auth.encode('ascii','ignore'))
+    try:
+        c.perform()
+        answer=buf.getvalue()
+        buf.close()
+        if (debug):
+            print >> sys.stderr, "Keystone authentication succeeded"
+        return answer
+    except pycurl.error, error:
+        errno, errstr = error
+        print  >> sys.stderr, 'An error occurred while doing the initial authentication: ', errstr 
+        exit(1)
+
+def auth_keystone_v3(keystoneserver, username, password, domain, tenant, token, debug ):
+    if (token):
+        auth='{"auth":{"scope": {"project": {"id":"'+tenant+'"}},"identity":{"methods":["token"],"token":{"id": "'+token+'"}}}}'
+    else:
+        auth='{"auth":{"identity":{"methods":["password"],"password":{"user": {"name": "'+username+'", "password":"'+password+'","domain":{"name":"'+domain+'"}}}}}}'
+    auth_server = urlparse.urlparse(keystoneserver)[1]
+    auth_protocol = urlparse.urlparse(keystoneserver)[0]
+    auth_path = urlparse.urlparse(keystoneserver)[2]
+    auth_port = auth_server.split(":")[1]
+    endpoint = auth_protocol+"://"+auth_server+"/v3/auth/tokens"
+    if (debug):
+      print "keystone auth request for v3 user" + username + " project: "+tenant 
+    buf    = cStringIO.StringIO()
+    header = cStringIO.StringIO()
+    c = pycurl.Curl()
+    c.setopt(c.URL, endpoint.encode('ascii','ignore'))
+    c.setopt(c.FOLLOWLOCATION, 1)
+    c.setopt(c.MAXREDIRS, 5)
+    c.setopt(c.WRITEFUNCTION, buf.write)
+    c.setopt(c.HEADERFUNCTION, header.write)
+    #c.setopt(c.CAINFO,cacert.encode('ascii','ignore'))
+    c.setopt(c.HTTPHEADER, ['Accept: application/json', 'Content-Type: application/json'])
+    c.setopt(c.POSTFIELDS, auth.encode('ascii','ignore'))
+    try:
+        c.perform()
+        answer=buf.getvalue()
+        if (debug):
+           print answer
+        response = header.getvalue()
+        headers = dict(re.findall(r"(?P<name>.*?): (?P<value>.*?)\r\n", response))
+        if (debug):
+          print headers
+        token = headers["X-Subject-Token"]
+        buf.close()
+        header.close()
+        if (debug):
+            print >> sys.stderr, "Keystone V3 authentication succeeded: "+token
+        return token, answer
+    except pycurl.error, error:
+        errno, errstr = error
+        print  >> sys.stderr, 'An error occurred while doing the initial authentication: ', errstr 
+        exit(1)
+
+def auth_keystone2(keystoneserver, username, password, tenant, debug ):
+    auth='\'{"auth":{"passwordCredentials":{"username":"'+username+'","password":"'+password+'"}}}\''
+    auth_server = urlparse.urlparse(keystoneserver)[1]
+    auth_protocol = urlparse.urlparse(keystoneserver)[0]
+    auth_path = urlparse.urlparse(keystoneserver)[2]
+    auth_port = auth_server.split(":")[1]
+
+    if auth_protocol == "https":
+        Newconn = httplib.HTTPSConnection
+    else:
+        Newconn = httplib.HTTPConnection
+    header = "'Content-type: application/json'"
+    req = "POST"
+    try:
+        get_auth_conn = Newconn( auth_server )
+        get_auth_conn.set_debuglevel(2)
+    except:
+        print >> sys.stderr, "cannot connect to keystone server "+auth_server
+        exit(1)
+    try:
+        get_auth_conn.request( req, auth_path, auth, header)
+        try:
+            answer = get_auth_conn.getresponse()
+            if (debug):
+                print >> sys.stderr, "keystone response: "+answer
+            if answer.status == 200:
+                if (debug):
+                    print >> sys.stderr, "Keystone authentication succeeded"
+                return answer.read()
+            else:
+                print >> sys.stderr, "Failed to get keystone token from " + keystone_server
+                print >> sys.stderr, answer.reason
+        except:
+            print >> sys.stderr, 'An error occurred while reading keystone response' + answer
+            exit(2)
+    except:
+        print >> sys.stderr, 'An error occurred while connecting to keystone server'
+        exit(1)
+
+def GetTenantsFromKeystone(verbose,debug,auth_url,keystone_response,tokenid):
+    decoded = json.loads(keystone_response)
+    keystone_protocol = urlparse.urlparse(auth_url)[0]
+    keystone_server   = urlparse.urlparse(auth_url)[1]
+    keystone_port     = urlparse.urlparse(auth_url)[2]
+    uri='/v2.0/tenants'
+    queryurl = keystone_protocol + "://"+keystone_server
+    if keystone_protocol == "https":
+        NEWconn = httplib.HTTPSConnection
+    else:
+        NEWconn = httplib.HTTPConnection
+    query = {}
+    data = json.dumps(query)
+    header = {"Content-type": "application/json", "X-Auth-Token": tokenid.encode('ascii','ignore')}
+    req = 'GET'
+    if (debug):
+        print >> sys.stderr, "Query keystone server at: " + queryurl
+        print >> sys.stderr, "Query it with: :" + json.dumps(query , indent=2)
+    try:
+        get_cm_conn = NEWconn(keystone_server)
+        try:
+            get_cm_conn.request( req, uri, body=data, headers=header )
+            res = get_cm_conn.getresponse()
+            if res.status == 200:
+                return json.loads( res.read() )
+        except:
+            print >> sys.stderr, "Failed to query keystone server at " + ceilometers
+            exit(1)
+    except:
+        print >> sys.stderr, "failed to create the connection object"
+
+def receive_data(verbose,debug,keystone_response,tokenid,start,end,meter):
+    decoded = json.loads(keystone_response)
+    if (meter == 'resources'):
+        uri='/v2/resources'
+    else:
+        uri='/v2/meters/%s' % meter
+
+    for endpoint in decoded["token"]["catalog"]:
+        if (endpoint["type"] == "metering"):
+            for ceilometers in endpoint["endpoints"]:
+                if ceilometers["interface"] == "public":
+                    ceilometer_server = urlparse.urlparse(ceilometers["url"])[1]
+                    ceilometer_protocol = urlparse.urlparse(ceilometers["url"])[0]
+                    if ceilometer_protocol == "https":
+                        NEWconn = httplib.HTTPSConnection
+                    else:
+                        NEWconn = httplib.HTTPConnection
+                    query = {"q":[{"field":"timestamp","op":"ge","value":start},{"field": "timestamp","op":"le","value":end}] }
+                    data = json.dumps(query)
+                    header = {"Content-type": "application/json", "X-Auth-Token": tokenid.encode('ascii','ignore')}
+                    req = 'GET'
+                    if (debug):
+                         print >> sys.stderr, "Query ceilometer server at: " + ceilometer_server + " at uri: " + uri
+                         print >> sys.stderr, "Query it with: :" + json.dumps(query , indent=2)
+                    try:
+                        get_cm_conn = NEWconn( ceilometer_server )
+                        try:
+                            get_cm_conn.request( req, uri, body=data, headers=header )
+                            res = get_cm_conn.getresponse()
+                            if res.status == 200:
+                                return json.loads( res.read() )
+                            else:
+                                if (debug):
+                                    print >> sys.stderr, "DEBUG: Ceilometer query returned no data, return code is "+str(res.status)
+                                print >> sys.stderr, res.read()
+
+                        except:
+                            print >> sys.stderr, "Failed to query ceilometer server at " + ceilometers
+                            sys.exit(1)
+                    except:
+                        print >> sys.stderr, "failed to create the connection object"
+
+def get_accgroup(filter, mapping,report_groups, project):
+    # return the accounting group
+    try:
+        groupname = mapping[project]["group"]
+        if (filter):
+            try: 
+                report_groups.index(groupname)
+            except:
+                groupname = 'unset'
+    except:
+        groupname = 'unknown'
+    return groupname 
+
+def get_tenant(mapping,project):
+    # return the accounting group
+    try:
+        tenant = mapping[project]["name"]
+    except:
+        tenant = 'NULL'
+    return tenant 
+
+def ana_received_net_data(verbose,debug, filter, mapping,report_groups,net_data,hide_names):
+    #
+    # filter for start and end records
+    #
+    try:
+        for record in net_data:
+            groupname = get_accgroup(filter, mapping, report_groups, record['project_id'])
+            if (groupname == 'unset' or (filter and (groupname == 'NULL'))):
+                pass
+            else:
+                # memorize relevant data and find start and end record
+                try:
+                    resource_id = record['resource_id']
+                except KeyError:
+                    try: 
+                        resource_id = record['resource_metadata']['vmuuid']
+                    except KeyError:
+                        try:
+                            resource_id = record['resource_metadata']['instance_id']
+                        except:
+                            continue
+                if (junk.match(resource_id)):
+                    try:
+                        resource_id = record['resource_metadata']['instance_id']
+                    except KeyError:
+                        try:
+                            resource_id = record['resource_metadata']['vmuuid']
+                        except KeyError:
+                            continue 
+
+                timestamp = record['timestamp']
+                counter_name = record['counter_name']
+                if record['counter_unit'] == 'B':
+                    netcount = record['counter_volume']
+                else:
+                    print >> sys.stderr, "ERROR: unknown counter unit type" + record['counter_unit']
+                    
+                try:
+                    ssm_record[resource_id]
+                except KeyError:
+                    print >> sys.stderr, "INFO: No CPU data for resource "+resource_id
+                    continue
+                try: 
+                    ssm_record[resource_id][counter_name]
+                    if (timestamp < ssm_record[resource_id][counter_name]['periodstart']):
+                        ssm_record[resource_id][counter_name]['periodstart'] = timestamp
+                    if (timestamp > ssm_record[resource_id][counter_name]['periodend']):
+                        ssm_record[resource_id][counter_name]['periodend'] = timestamp
+                        ssm_record[resource_id][counter_name]['counter_value'] = netcount
+                except KeyError:
+                    try:
+                        ssm_record[resource_id][counter_name]={}
+                    except KeyError:
+                        ssm_record[resource_id]={}
+                        ssm_record[resource_id][counter_name]={}
+                    ssm_record[resource_id][counter_name]['periodstart'] = timestamp                    
+                    ssm_record[resource_id][counter_name]['periodend'] = timestamp
+                    ssm_record[resource_id][counter_name]['counter_value'] = netcount
+    except TypeError:
+        print >> sys.stderr, "WARNING: No network usage data information has been received"
+    return 
+
+def ana_received_cpu_data(verbose,debug,filter, mapping,report_groups,cpu_data,hide_names):
+    #
+    # filter for start and end records
+    #
+    try:
+        for record in cpu_data:
+            groupname = get_accgroup(filter, mapping, report_groups, record['project_id'])
+            if (groupname == 'unset' or (filter and (groupname == 'NULL'))):
+                pass
+            else:
+                # memorize relevant data and find start and end record
+                try:
+                    resource_id = record['resource_id']
+                except KeyError:
+                    try: 
+                        resource_id = record['resource_metadata']['vmuuid']
+                    except KeyError:
+                        try:
+                            resource_id = record['resource_metadata']['instance_id']
+                        except:
+                            if (debug):
+                                print >> sys.stderr, "ERROR: JUNK detected. skipping"
+                                print >> sys.stderr, json.dumps(record , indent=2)
+                            continue
+                timestamp = record['timestamp']
+                try:
+                    ssm_record[resource_id]
+                except KeyError:
+                    if debug:
+                        print >> sys.stderr, "Debug: new record " + resource_id
+                    ssm_record[resource_id]={}
+                    ssm_record[resource_id]['periodstart'] = timestamp
+                    ssm_record[resource_id]['periodend'] = timestamp
+                    ssm_record[resource_id]['machinename'] = 'NULL'
+                    ssm_record[resource_id]['state'] = 'NULL'
+                    ssm_record[resource_id]['imageid'] = 'NULL'
+                try:
+                    username = ssm_record[resource_id]['username']
+                except:
+                    username = 'nobody'
+                try:
+                    cpucount = ssm_record[resource_id]['cpucount']
+                except:
+                    cpucount = 0
+                try:
+                    vcpu = ssm_record[resource_id]['vcpu']
+                except:
+                    vcpu = 0
+                try:
+                    memory = ssm_record[resource_id]['memory']
+                except:
+                    memory = 0
+                try:
+                    disk = ssm_record[resource_id]['disk']
+                except:
+                    disk = 0
+
+                counter_name = record['counter_name']
+                if record['counter_unit'] == 'ns':
+                    cpucount = record['counter_volume']
+                else:
+                    print >> sys.stderr, "ERROR: unknown counter unit type" + record['counter_unit']
+
+                try:
+                    memory = record['resource_metadata']['memory_mb']
+                except:
+                    pass
+                try:
+                    vcpu = record['resource_metadata']['vcpus']
+                except:
+                    pass
+                try:
+                    disk = record['resource_metadata']['disk_gb']
+                except:
+                    pass
+                try:
+                    username = record['user_id']
+                except:
+                    pass
+                # memorize relevant data and find start and end record
+
+                try: 
+                    ssm_record[resource_id][counter_name]
+                    if (timestamp < ssm_record[resource_id][counter_name]['periodstart']):
+                        ssm_record[resource_id][counter_name]['periodstart'] = timestamp
+                    if (timestamp > ssm_record[resource_id][counter_name]['periodend']):
+                        ssm_record[resource_id][counter_name]['periodend'] = timestamp
+                        ssm_record[resource_id][counter_name]['counter_value'] = cpucount
+                        ssm_record[resource_id]['cpucount']=cpucount
+
+                except KeyError:
+                    try:
+                        ssm_record[resource_id][counter_name]={}
+                    except KeyError:
+                        ssm_record[resource_id]={}
+                        ssm_record[resource_id][counter_name]={}
+                    ssm_record[resource_id][counter_name]['periodstart'] = timestamp                    
+                    ssm_record[resource_id][counter_name]['periodend'] = timestamp
+                    ssm_record[resource_id][counter_name]['counter_value'] = cpucount
+                    ssm_record[resource_id]['cpucount']=cpucount
+
+                try:
+                    ssm_record[resource_id]['imageid'] = record['resource_metadata']['image_ref_url']
+                except:
+                    try:
+                        ssm_record[resource_id]['imageid'] = record['resource_metadata']['image_ref']
+                    except:
+                        pass
+                try:
+                    ssm_record[resource_id]['state'] = state_map[record['resource_metadata']['state']]
+                except:
+                    pass
+                try:
+                    ssm_record[resource_id]['starttime'] = parser.parse(record['resource_metadata']['created_at']).strftime("%s")
+                except:
+                    pass
+
+                    # terminated ?
+                try:
+                    ssm_record[resource_id]['endtime'] = parser.parse(record['resource_metadata']['deleted_at']).strftime("%s")
+                except:
+                    try:
+                        ssm_record[resource_id]['endtime'] = parser.parse(record['resource_metadata']['terminated_at']).strftime("%s")
+                    except: 
+                        pass
+            
+                try:
+                    ssm_record[resource_id]['machinename'] = record['resource_metadata']['name']
+                except:
+                    try:
+                        ssm_record[resource_id]['machinename'] = record['resource_metadata']['display_name']
+                    except: 
+                        pass
+                if (username != "nobody"):
+                    ssm_record[resource_id]['username'] = username
+                ssm_record[resource_id]['groupname'] = groupname 
+                ssm_record[resource_id]['vcpu'] = vcpu
+                ssm_record[resource_id]['memory'] = memory
+                ssm_record[resource_id]['disk'] = disk
+                ssm_record[resource_id]['tenant'] = get_tenant(mapping,record['project_id'])
+                ssm_record[resource_id]['vmuuid'] = resource_id
+                try:
+                    ssm_record[resource_id]['imageid'] = record['resource_metadata']['image_ref_url']
+                except:
+                    pass
+                try:
+                    ssm_record[resource_id]['state'] = state_map[record['resource_metadata']['state']]
+                except:
+                    pass
+                try:
+                    ssm_record[resource_id]['starttime'] = parser.parse(record['resource_metadata']['created_at']).strftime("%s")
+                except:
+                    pass
+
+                # terminated ?
+                try:
+                    endtime = parser.parse(record['resource_metadata']['deleted_at']).strftime("%s")
+                    try: 
+                        if (ssm_record[resource_id]['endtime'] < endtime):
+                            ssm_record[resource_id]['endtime'] = endtime
+                    except:
+                        ssm_record[resource_id]['endtime'] = endtime
+                except:
+                    try:
+                        endtime = parser.parse(record['resource_metadata']['terminated_at']).strftime("%s")
+                        try: 
+                            if (ssm_record[resource_id]['endtime'] < endtime):
+                                ssm_record[resource_id]['endtime'] = endtime
+                        except:
+                            ssm_record[resource_id]['endtime'] = endtime
+                    except: 
+                        pass
+            
+                if (hide_names):
+                    try:
+                        ssm_record[resource_id]['machinename'] = record['resource_metadata']['instance_id']
+                    except:
+                        pass
+                else:
+                    try:
+                        ssm_record[resource_id]['machinename'] = record['resource_metadata']['display_name']
+                    except:
+                        pass
+
+    except TypeError:
+        print >> sys.stderr, "WARNING: No cpu usage data information has been received"
+    return
+
+def PrintSSMRecords(ssm, sitename, verbose, debug):
+    line = "APEL-cloud-message: %s\n" % "v0.2"
+    for resource_id in ssm.keys():
+        try:
+            ssm[resource_id]['username']
+        except:
+            print >> sys.stderr, "WARNING: Skipping junk record: \n" + json.dumps(ssm[resource_id], indent=2)
+            continue
+
+        if ssm[resource_id]['vmuuid']:
+                if (verbose):
+                    try:
+                        print >> sys.stderr, "INFO: reported period: from " + ssm[resource_id]['periodstart'] + " to " + ssm[resource_id]['periodend']
+                    except KeyError:
+                        print >> sys.stderr,"--------------------"
+                        print >> sys.stderr,"cannot find periodstart for resource "+resource_id
+                        print >> sys.stderr, json.dumps(ssm[resource_id], indent=2)
+                        print >> sys.stderr,"--------------------"
+                #line += "Resourceid: %s\n" % resource_id
+                line += "VMUUID: %s\n" % ssm[resource_id]['vmuuid']
+                line += "SiteName: %s\n" % sitename
+                line += "MachineName: %s\n" % ssm[resource_id]['machinename']
+                line += "LocalUserId: %s\n" % str(ssm[resource_id]['username'])
+                line += "LocalGroupId: %s\n" % str(ssm[resource_id]['groupname'])
+                line += "GlobalUserName: NULL\n"
+                line += "FQAN: NULL\n"
+                if (ssm[resource_id]['state'] == "running"):
+                    line += "Status: %s\n" % "NULL"
+                else:
+                    line += "Status: %s\n" % ssm[resource_id]['state']
+                try:
+                    line += "StartTime: %d\n" % int(ssm[resource_id]['starttime'])
+                except:
+                    line += "StartTime: %d\n" % 0
+                    if (debug):
+                        print >> sys.stderr,"DEBUG: starttime is not set. Skipping"
+                try:
+                    endtime = int(ssm[resource_id]['endtime'])
+                except:
+                    endtime = 0
+                line += "EndTime: %d\n" % int(endtime)
+                
+                try:
+                    starttime = int(ssm[resource_id]['starttime'])
+                except:
+                    starttime = 0
+                if ( endtime > 0 and starttime > 0):
+                    walltime = endtime-starttime
+                else:
+                    walltime = 0
+                
+                line += "WallDuration: %d\n" % int(walltime)
+                line += "CpuDuration: %d\n" % int(0.5+float(ssm[resource_id]['cpucount'])/1000000000.0)
+                try:
+                    line += "CpuCount: %d\n" %  int(ssm[resource_id]['vcpu'])
+                except:
+                    line += "CpuCount: %d\n" % 0
+                    if (debug):
+                        print >> sys.stderr, "DEBUG: cannot get cpu count. Skipping"
+                        print >> sys.stderr, ssm[resource_id]['vcpu']
+                line += "%s\n" % "NetworkType: NULL"
+                try:
+                    line += "NetworkInbound: %d\n" % int(0.5+float(ssm[resource_id]['network.incoming.bytes']['counter_value'])/1073741824.0)
+                except:
+                    if (debug):
+                        print >> sys.stderr, "DEBUG: Inbound traffic is not set. Skipping"
+                try:
+                    line += "NetworkOutbound: %s\n" % int(0.5+float(ssm[resource_id]['network.outgoing.bytes']['counter_value'])/1073741824.0)
+                except :
+                    if (debug):
+                        print >> sys.stderr, "DEBUG: Outbound traffic is not set. Skipping"
+                try:
+                    line += "Memory: %d\n" % int(ssm[resource_id]['memory'])
+                except :
+                    if (debug):
+                        print >> sys.stderr, "DEBUG: memory is not set. Skipping"
+                        print >> sys.stderr, ssm[resource_id]['memory']
+                try:
+                    line += "Disk: %d\n" % int(ssm[resource_id]['disk'])
+                except:
+                    if (debug):
+                        print >> sys.stderr, "DEBUG: disk is not set. Skipping"
+                # to be added later on
+                # line += "GlobalUserName: %s\n" % "NULL"
+                # line += "%s\n" % "FQAN: NULL"
+                # line += "SuspendDuration: %s\n" % "NULL"
+                line += "StorageRecordId: %s\n" % "NULL"
+                line += "ImageId: %s\n" % str(ssm[resource_id]['imageid'])
+                line += "CloudType: %s\n" % "OpenStack"
+                line += "%s\n" % "%%"
+        else:
+            if (debug):
+                print >> sys.stderr, json.dumps(ssm[resource_id], indent=2)
+    return line
+
+def CreateReport(ssm,verbose,debug):
+    report="Last Update:" + strftime("%a, %d %b %Y %H:%M:%S", localtime())+"\n"
+    report += "| *Accounting group* | *VMs* | *CPUs* | *disk* | *memory* | *cpu time* | *net in* | *net out* | \n"
+    by_accgroup = {}
+    for resource_id in ssm.keys():
+        try:
+            ssm[resource_id]['username']
+        except:
+            print >> sys.stderr, "WARNING: Skipping junk record: \n" + json.dumps(ssm[resource_id], indent=2)
+            continue
+        try: 
+            by_accgroup[ssm[resource_id]['groupname']]
+        except KeyError:
+            try:
+                ssm[resource_id]['groupname']
+                by_accgroup[ssm[resource_id]['groupname']] = {}
+            except:
+                print >> sys.stderr, "ERROR: no groupname info for resource " +  resource_id
+                print >> sys.stderr, json.dumps(ssm[resource_id], indent=2)
+                sys.exit(1)
+
+        try:
+            by_accgroup[ssm[resource_id]['groupname']]['nvms'] += 1
+        except KeyError:
+            by_accgroup[ssm[resource_id]['groupname']]['nvms'] = 1 
+
+        try:
+            by_accgroup[ssm[resource_id]['groupname']]['ncores'] += int(ssm[resource_id]['vcpu'])
+        except KeyError:
+            by_accgroup[ssm[resource_id]['groupname']]['ncores'] = int(ssm[resource_id]['vcpu'])
+
+        try:
+            by_accgroup[ssm[resource_id]['groupname']]['disk'] += int(ssm[resource_id]['disk']) 
+        except KeyError:
+            by_accgroup[ssm[resource_id]['groupname']]['disk'] = int(ssm[resource_id]['disk'])
+
+        try:
+            by_accgroup[ssm[resource_id]['groupname']]['memory'] += int(ssm[resource_id]['memory'])
+        except KeyError:
+            by_accgroup[ssm[resource_id]['groupname']]['memory'] = int(ssm[resource_id]['memory'])
+  
+        try:
+            by_accgroup[ssm[resource_id]['groupname']]['cpucount'] += int(ssm[resource_id]['cpu']['counter_value'])
+        except KeyError:
+            try:
+                by_accgroup[ssm[resource_id]['groupname']]['cpucount'] = int(ssm[resource_id]['cpu']['counter_value'])
+            except KeyError:
+                if (debug):
+                    print >>sys.stderr, "ERROR: no cpu counter value for "+resource_id
+                    print >>sys.stderr,  json.dumps(ssm[resource_id], indent=2)
+        try:
+            by_accgroup[ssm[resource_id]['groupname']]['net_in'] += float(ssm[resource_id]['network.incoming.bytes']['counter_value'])
+        except KeyError:
+            try: 
+                by_accgroup[ssm[resource_id]['groupname']]['net_in'] = float(ssm[resource_id]['network.incoming.bytes']['counter_value'])
+            except KeyError:
+                if (debug):
+                    print >>sys.stderr, "ERROR: no incoming networking counter value for "+resource_id
+                    #print >>sys.stderr,  json.dumps(ssm[resource_id], indent=2)
+ 
+        try:
+            by_accgroup[ssm[resource_id]['groupname']]['net_out'] += float(ssm[resource_id]['network.outgoing.bytes']['counter_value'])
+        except KeyError:
+            try:
+                by_accgroup[ssm[resource_id]['groupname']]['net_out'] = float(ssm[resource_id]['network.outgoing.bytes']['counter_value'])
+            except KeyError:
+                if (debug):
+                    print >>sys.stderr, "ERROR: no outing networking counter value for "+resource_id
+                    #print >>sys.stderr,  json.dumps(ssm[resource_id], indent=2)
+ 
+    for accgroup in by_accgroup.keys():
+        try:
+            by_accgroup[accgroup]['cpucount']
+        except KeyError:
+            by_accgroup[accgroup]['cpucount'] = 0
+        try:
+            by_accgroup[accgroup]['net_in']
+        except KeyError:
+            by_accgroup[accgroup]['net_in'] = 0
+        try:
+            by_accgroup[accgroup]['net_out']
+        except KeyError:
+            by_accgroup[accgroup]['net_out'] = 0
+            
+        report += "| "+accgroup+" | "+str(by_accgroup[accgroup]['nvms'])+" | "+str(by_accgroup[accgroup]['ncores'])+" | "+str(by_accgroup[accgroup]['disk'])+" | "+str(by_accgroup[accgroup]['memory'])+" | "+str(by_accgroup[accgroup]['cpucount']/1000000000.0) +" | "+str(by_accgroup[accgroup]['net_in']/1073741824.0) +" | "+str(by_accgroup[accgroup]['net_out']/1073741824.0)+"|\n"
+        #report += "| "+accgroup+" | "+str(by_accgroup[accgroup]['nvms'])+" | "+str(by_accgroup[accgroup]['ncores'])+" | "+str(by_accgroup[accgroup]['disk'])+" | "+str(by_accgroup[accgroup]['memory'])+" | "+str(by_accgroup[accgroup]['cpucount']) +" | "+str(by_accgroup[accgroup]['net_in']) +" | "+str(by_accgroup[accgroup]['net_out'])+"|\n"
+
+    return report
+
+
+
+aparser = argparse.ArgumentParser(description='Publish ceilometer records to APEL using SSM2')
+aparser.add_argument('-p', '--publish', dest='publish', action='store_true', help='directly publish the data',default=False)
+aparser.add_argument('-v', '--verbose', dest='verbose', action='store_true', help='be verbose',default=False)
+aparser.add_argument('-d', '--debug', dest='debug', action='store_true', help='produce debugging output',default=False)
+aparser.add_argument('-s', '--start', dest='start', action='store',help='start time for the publication',default="1970-01-01T00:00:00")
+aparser.add_argument('-e', '--end', dest='end', action='store', help='end time for the publicatin',default="2020-12-24T23:59:59")
+aparser.add_argument('-c', '--config', dest='configfile', action='store', help='ceilometer2ssm configuration file location',default="/etc/ceilometer2ssm.conf")
+aparser.add_argument('-a', '--apelssmconfig',dest='apelssmconf',action='store', help='location of the apel-ssm configuration file', default='/etc/apel/sender.cfg')
+aparser.add_argument('-l', '--localreport',dest='localreport',action='store_true', help='Create also a local report in Twiki format. Implies --nofilter', default=False)
+#aparser.add_argument('-n', '--nofilter',dest='nofilter',action='store_true', help='Do not filter the output for groups', default=False)
+
+args = aparser.parse_args()
+start = args.start
+end = args.end
+publish = args.publish
+verbose = args.verbose
+debug = args.debug
+configfile = args.configfile
+apelssmconf = args.apelssmconf
+localreport = args.localreport
+#nofilter = args.nofilter
+
+if (debug):
+    verbose = True
+    print >> sys.stderr, "Debug mode is enabled: will not actually publish but just retrieve the data and report!"
+
+if (verbose) :
+    print >> sys.stderr, "Verbose output will be created"
+    print >> sys.stderr, "Reading configuration from "+configfile
+    print >> sys.stderr, "Records are processed between "+start+" and "+end
+    if (publish):
+        print >> sys.stderr, "Resulting records will be published to APEL"
+    else:
+        print >> sys.stderr, "Will not try to publish the result"
+
+# read mapping from file
+config = read_config(configfile)
+mapping = config["mapping"]
+sitename = config["sitename"]
+report_groups = config["report_groups"]
+hide_names = config["hide_names"]
+
+try:
+    secrets = config["secrets"]
+except:
+    if (verbose):
+        print >> sys.stderr, "No secrets defined in the configuration file"
+    
+try:
+    os_auth_url=secrets["os_auth_url"]
+except:
+    try:
+        os_auth_url=os.environ['OS_AUTH_URL']
+    except KeyError:
+        print >> sys.stderr, "ERROR: OS_AUTH_URL is not set"
+        sys.exit(1)
+try:
+    os_username=secrets["os_username"]
+except:
+    try:
+        os_username=os.environ['OS_USERNAME']
+    except KeyError:
+        print >> sys.stderr, "ERROR: OS_USERNAME is not set"
+        sys.exit(1)
+
+try:
+    os_password=secrets["os_password"]
+except:
+    try:
+        os_password=os.environ['OS_PASSWORD']
+    except KeyError:
+        print >> sys.stderr, "ERROR: OS_PASSWORD is not set"
+        sys.exit(1)
+
+try:
+    os_tenant_name=secrets["os_tenant_name"]
+except:
+    try:
+        os_tenant_name=os.environ['OS_TENANT_NAME']
+    except KeyError:
+        print >> sys.stderr, "ERROR: OS_TENANT_NAME is not set"
+        sys.exit(1)
+
+if (debug):
+    print >> sys.stderr, "Getting authentication token from keystone"
+
+#auth  = auth_keystone(os_auth_url+'/tokens',os_username,os_password,os_tenant_name,debug)
+(init_token, init_auth)   =  auth_keystone_v3(os_auth_url,os_username,os_password,"default","default","",debug)
+
+
+if (debug):
+    print >> sys.stderr, "Keystone response:"
+    print >> sys.stderr, "token:" + init_token
+    print >> sys.stderr, "auth:"
+    print >> sys.stderr, json.dumps(init_auth, indent=2)
+
+tenants = GetTenantsFromKeystone(verbose,debug,os_auth_url,init_auth,init_token)
+if (debug):
+    print >> sys.stderr, json.dumps(tenants, indent=2)
+
+ssm_record = {}
+
+for tenant in tenants["tenants"]:
+    tenant_id = tenant["id"]
+    tenant_name = tenant["name"]
+    group = tenant_name.split(" ")[0]
+    mapping[tenant_id] = {"group" : group, "name": tenant_name}
+    if (debug):
+          print "Adding tenant ID "+tenant_id+" name: "+tenant_name + " => "+group  
+  
+# get a skoped token for the current tenant 
+    (token, auth)   =  auth_keystone_v3(os_auth_url,os_username,os_password,"default",tenant_id,init_token,debug)
+      
+    cpu_used = receive_data(verbose,debug,auth,token,start,end,'cpu')
+    if (debug):
+          print  json.dumps(cpu_used, indent=2)
+    net_in   = receive_data(verbose,debug,auth,token,start,end,'network.incoming.bytes')
+    if (debug):
+          print  json.dumps(net_in, indent=2)
+    net_out  = receive_data(verbose,debug,auth,token,start,end,'network.outgoing.bytes')
+    if (debug):
+          print  json.dumps(net_out, indent=2)
+  
+    if (verbose):
+          print >> sys.stderr, "analysing data"
+    nofilter = True
+    ana_received_cpu_data(verbose,debug, nofilter, mapping, report_groups, cpu_used,hide_names)
+    ana_received_net_data(verbose,debug, nofilter, mapping, report_groups, net_in,  hide_names)
+    ana_received_net_data(verbose,debug, nofilter, mapping, report_groups, net_out, hide_names)
+  
+#
+# print the results
+#
+
+records = PrintSSMRecords(ssm_record, sitename, verbose, debug)
+if verbose:
+    print >> sys.stderr, records
+
+if (localreport):
+    twiki_report = CreateReport(ssm_record,verbose,debug)
+    print twiki_report
+
+if (publish):
+    dirq = QueueSimple('/var/spool/apel/outgoing/')
+    dirq.add(records)
+    command_line="/usr/bin/ssmsend --config " + apelssmconf
+    if (debug):
+        print >> sys.stderr, "Would now run \""+command_line+"\""
+    else:
+        args = shlex.split(command_line)
+        try:
+            p = subprocess.Popen(args)
+            if (p.wait() != 0):
+                print >> sys.stderr, p
+                sys.exit(1)
+        except:
+            print >> sys.stderr, "ERROR: Failed to send the message"
+            sys.exit(1)
+            
