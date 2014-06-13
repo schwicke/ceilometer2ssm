@@ -3,4 +3,4 @@ AM_INIT_AUTOMAKE
 
 dnl Checks for library functions.
 AC_FUNC_ALLOCA
-AC_OUTPUT(Makefile config/Makefile src/Makefile scripts/Makefile doc/Makefile)
+AC_OUTPUT(Makefile config/Makefile scripts/Makefile doc/Makefile)

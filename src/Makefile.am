@@ -1,1 +1,0 @@
-libexec_SCRIPTS = ceilometer2ssm cloudaccounting

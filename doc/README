@@ -1,5 +1,50 @@
-ceilometer2ssm
+Scripts:
+======= 
+all-in-one setup for small sites without a shadow database:
+
+/usr/bin/ceilometer2ssm: this is the base script polling ceilometer. 
+   It can also be used as a standalone tool. Should be run in a cron job. See below.
+/usr/bin/cloudaccounting: a wrapper for ceilometer2ssm in stand-alone mode
+
+setup using a shadow database for accounting purpose: 
+/usr/bin/ceilodatapoll: polls ceilometer and returns the received data
+/usr/bin/ceilodatastore: uses ceilodatapoll, pre-processes the data and stores it in the shadow database
+/usr/bin/ceilodata2ssm: publishes ssm records from the shadow database
+
+Building and installing:
+=======================
+=======================
+
+Building the binary rpm:
+=======================
+./autogen.sh
+make rpm
+
+Building from source rpm:
+========================
+./autogen.sh
+make sources
+rpmbuild --rebuild <path-to-source-rpm>
+
+Configuration:
 ==============
+- Edit /etc/ceilometer2ssm.conf 
+- Edit /etc/ceilodata.conf 
+
+Shadow database setup:
+=====================
+=====================
+The setup of the mysql database is manual for the time being. 
+- Add the database access info to /etc/ceilodata.conf
+- setup the schema using /usr/share/doc/ceilometer2ssm/ceilodatastore.sql
+
+
+Stand-alone setup:
+==================
+==================
+
+ceilometer2ssm script
+=====================
 
 This script serves as an interface between OpenStack Ceilometer and WLCG Apel accounting. The script connects to all Ceilometer instances reported by keystone, and creates SSM 
 records from the retrieved data. 
@@ -15,7 +60,8 @@ Configuration file:
 /etc/ceilometer2ssm.conf
 
 
-cloudaccounting
-===============
+Cron job:
+=========
+This script is a wrapper for ceilometer2ssm which will create the SSM records from the previous day. It is run as a cron job once per day. A sample cron job entry can be found in /usr/share/doc/ceilometer2ssm/cloudaccounting.cron
 
-This script is a wrapper for ceilometer2ssm which will create the SSM records from the previous day. It is run as a cron job once per day
+

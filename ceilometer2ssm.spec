@@ -1,6 +1,11 @@
+%if 0%{?rhel} && 0%{?rhel} <= 6
+%{!?__python2: %global __python2 /usr/bin/python2}
+%{!?python2_sitelib: %global python2_sitelib %(%{__python2} -c "from distutils.sysconfig import get_python_lib; print(get_python_lib())")}
+%{!?python2_sitearch: %global python2_sitearch %(%{__python2} -c "from distutils.sysconfig import get_python_lib; print(get_python_lib(1))")}
+%endif
 Summary: OpenStack Ceilometer to SSM2 interface
 Name: ceilometer2ssm
-Version: 0.2.2
+Version: 0.3.0
 Release: 1%{?dist}
 License: ASL 2.0
 Vendor: CERN, ASGC
@@ -12,39 +17,58 @@ Url: https://github.com/schwicke/ceilometer2ssm
 Source0: http://cern.ch/uschwick/software/ceilometer2ssm/%{version}/%{name}.tar.gz
 BuildRequires: automake
 BuildRequires: autoconf
+BuildRequires: python-devel
+BuildRequires: python-setuptools
 Requires: apel-ssm
 Requires: python-dirq
-
+Requires: python-sqlalchemy
+Requires: python-suds
+Requires: python-pycurl
+Requires: python-httplib2
 
 %description
 provides an interface between APEL and OpenStack Ceilometer
 
 %prep
 %setup -q -n %{name}
-./autogen.sh
 
 %configure
 %build
+(cd cloudaccounting && %{__python} setup.py build)
 make
  
 %install
 [ -d $RPM_BUILD_ROOT ] && rm -rf $RPM_BUILD_ROOT
 mkdir $RPM_BUILD_ROOT
+(cd cloudaccounting && %{__python} setup.py install -O1 --skip-build --root $RPM_BUILD_ROOT --install-lib %{python2_sitearch})
 make DESTDIR=%{buildroot} install
+mkdir -p %{buildroot}/var/lib/ceilodata
+chmod 0750 %{buildroot}/var/lib/ceilodata
+mkdir -p %{buildroot}/var/log/ceilodata
+chmod 0750 %{buildroot}/var/log/ceilodata
 
 %clean
 rm -rf $RPM_BUILD_ROOT
 
 %files 
 %defattr(-,root,root)
-/usr/libexec/ceilometer2ssm
-/usr/libexec/cloudaccounting
+
+%{python2_sitearch}
+%{_bindir}
+
 %config(noreplace) /etc/logrotate.d/ceilometer2ssm
-%config(noreplace) /etc/cron.d/cloudaccounting.cron
 %config(noreplace) /etc/ceilometer2ssm.conf
-%doc /usr/share/doc/ceilometer2ssm/README
+%config(noreplace) /etc/ceilodata.conf
+%doc /usr/share/doc/ceilometer2ssm
+%dir /var/lib/ceilodata
+%dir /var/log/ceilodata
 
 %changelog
+* Fri Jun 13 2014 Ulrich Schwickerath <Ulrich.Schwickerath@cern.ch> -0.3.0-1
+- split ceilometer2ssm into different pieces
+- use shadow database to flatten results
+- add tool to do the publication from the cache database
+
 * Fri Mar 14 2014 Ulrich Schwickerath <Ulrich.Schwickerath@cern.ch> -0.2.2-1
 - bug fix release and cleanup
 

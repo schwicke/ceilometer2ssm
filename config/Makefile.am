@@ -1,1 +1,2 @@
-sysconf_DATA = ceilometer2ssm.conf
+sysconf_DATA = ceilometer2ssm.conf ceilodata.conf
+

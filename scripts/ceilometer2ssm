@@ -1,4 +1,9 @@
-/var/log/cloudaccounting.log {
+/var/log/cloudaccounting.log 
+/var/log/ceilodata/poll.log
+/var/log/ceilodata/store.log
+/var/log/ceilodata/reports/error.log
+
+{
     weekly
     missingok
     notifempty
