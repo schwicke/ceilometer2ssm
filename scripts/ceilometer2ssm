@@ -531,7 +531,7 @@ def PrintSSMRecords(ssm, sitename, verbose, debug):
                 line += "LocalUserId: %s\n" % str(ssm[resource_id]['username'])
                 line += "LocalGroupId: %s\n" % str(ssm[resource_id]['groupname'])
                 line += "GlobalUserName: NULL\n"
-                line += "FQAN: NULL\n"
+                line += "FQAN: %s\n" % str(ssm[resource_id]['groupname'])
                 if (ssm[resource_id]['state'] == "running"):
                     line += "Status: %s\n" % "NULL"
                 else:
