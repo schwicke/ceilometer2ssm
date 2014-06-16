@@ -1,1 +1,1 @@
-01 08 * * * root /usr/libexec/cloudaccounting -p -v >> /var/log/cloudaccounting.log 2>&1 
+01 08 * * * root /usr/bin/cloudaccounting -p -v >> /var/log/cloudaccounting.log 2>&1 
