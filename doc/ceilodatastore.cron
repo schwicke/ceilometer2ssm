@@ -1,0 +1,1 @@
+01 01 * * * root /usr/bin/ceilodatastore >> /var/log/ceilodatastore.log 2>&1 
