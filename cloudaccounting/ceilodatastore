@@ -9,6 +9,8 @@ ceilodatapoll.py
 """
 
 # All the Imports here
+import sys
+sys.path.insert(0, '/usr/lib64/python2.6/site-packages/SQLAlchemy-0.7.8-py2.6-linux-x86_64.egg')
 
 from datetime import date,datetime, timedelta
 from cloudaccounting import api as db_api
@@ -16,10 +18,10 @@ import json
 import logging
 import os.path
 import subprocess
-import sys
 import time
 from cloudaccounting import landbquery # queries landb datbase
 from cloudaccounting import hwdbquery  # queries hwdb database
+import argparse
 
 hep_spec_data={} # stores the serial number-hep_spec mappings
 
@@ -443,6 +445,22 @@ def get_sorted_resource_data(ceilo_data_per_tenant):
                     metric_list.append(tmp_metric_info)
                     sorted_resource_table[resource_id]["net_out_metric_info"]=metric_list
     return sorted_resource_table
+
+#
+# main starts here
+#
+
+today=date.today()
+yesterday = date.today() - timedelta(1)
+yesterday=str(yesterday)
+today=str(today)
+aparser = argparse.ArgumentParser(description='Wrapper for ceilodatapoll')
+aparser.add_argument('-d', '--debug', dest='debug', action='store_true', help='Produce debugging output',default=False)
+aparser.add_argument('-t', '--day', dest='yesterday', action='store',help='Day to process. Must be in the past. Format: yyyy-mm-dd',default=yesterday)
+args = aparser.parse_args()
+yesterday=args.yesterday
+debug = args.debug
+
 hep_spec_data=getHepSpecData()
 
 config = read_config()
@@ -485,14 +503,17 @@ try:
     config_parameters = config["config_parameters"]
 except:
     if (verbose):
-        print >> sys.stderr, "ERROR: No configuration parametes defined in the configuration file"
+        print >> sys.stderr, "INFO: No configuration parametes defined in the configuration file"
 try:
     ceilodatapoll=config_parameters["ceilo_data_poll_pgm"]
     ceilo_data_store_log_file=config_parameters["ceilo_data_store_log_file"]
 except KeyError:
     print >> sys.stderr, "ERROR: CEILO_DATA_STORE configuration parameters not set"
     sys.exit(1)
-log_level=logging.DEBUG
+if (debug):
+    log_level=logging.DEBUG
+else:
+    log_level=logging.ERROR
 lgr = logging.getLogger('ceilo_data_store_script')
 lgr.setLevel(log_level)
 fh = logging.FileHandler(ceilo_data_store_log_file)
@@ -515,10 +536,6 @@ req_attributes = ["user_id", "project_id", "resource_id", "node","hostname",
 
 
 
-today=date.today()
-yesterday = date.today() - timedelta(1)
-yesterday=str(yesterday)
-today=str(today)
 #print yesterday
 time_list=[]
 tmp_time_list=[yesterday+" 00:00:00",yesterday+" 03:59:59"]
@@ -565,9 +582,9 @@ for tmp_list in time_list:
     except ValueError:
         lgr.error('The output is not in correct JSON format')
         sys.exit(0)
-        tenant_info=data["t_info"]
-        ceilo_data=data["c_data"]
-        ceilo_data_per_tenant={}
+    tenant_info=data["t_info"]
+    ceilo_data=data["c_data"]
+    ceilo_data_per_tenant={}
     for tenant_id in ceilo_data.iterkeys():
         ceilo_data_filtered={}
         tenant_data=ceilo_data[tenant_id]
@@ -619,10 +636,10 @@ for tmp_list in time_list:
                             try:
                                 hep_spec_value=hep_spec_data[serial_number]
                             except KeyError:
-                                print >> sys.stderr, "ERROR:Serial Number,"+ serial_number+" has no entry in the hep-spec table "
+                                print >> sys.stderr, "ERROR: Serial Number,"+ serial_number+" has no entry in the hep-spec table "
 
                         except:
-                            print >> sys.stderr, "ERROR: Errror Occured during HEP-SPEC Calculation"
+                            print >> sys.stderr, "ERROR: Error Occured during HEP-SPEC Calculation"
 
                     req_data.append(hep_spec_value)
                     req_data.append(tenant_id)

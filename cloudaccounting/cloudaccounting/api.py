@@ -42,7 +42,6 @@ def shutdown_session(exception=None):
 
 def store_data(resource_info,metric_info, start_time, end_time,lgr):
     from models import Resources, MetricData,CurrentRecord
-    lgr.debug("inside database store module")
     try:
         user_id = resource_info["user_id"]
         project_id =resource_info["project_id"]
@@ -159,7 +158,7 @@ def store_data(resource_info,metric_info, start_time, end_time,lgr):
                 db_session.add(new_resource)
                 db_session.commit()
         except IntegrityError,message:
-            lgr.error('DB Error Occured %s', message[0])
+            lgr.info('DB Error Occured %s', message[0])
             db_session.rollback()
         try:
             group_name="default"

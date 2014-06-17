@@ -6,7 +6,7 @@
 Summary: OpenStack Ceilometer to SSM2 interface
 Name: ceilometer2ssm
 Version: 0.3.1
-Release: 1%{?dist}
+Release: 2%{?dist}
 License: ASL 2.0
 Vendor: CERN, ASGC
 Group: Applications/Internet
@@ -21,7 +21,7 @@ BuildRequires: python-devel
 BuildRequires: python-setuptools
 Requires: apel-ssm
 Requires: python-dirq
-Requires: python-sqlalchemy
+Requires: python-sqlalchemy0.7
 Requires: python-suds
 Requires: python-pycurl
 Requires: python-httplib2
@@ -64,7 +64,7 @@ rm -rf $RPM_BUILD_ROOT
 %dir /var/log/ceilodata
 
 %changelog
-* Mon Jun 16 2014 Ulrich Schwickerath <Ulrich.Schwickerath@cern.ch> -0.3.1-1
+* Mon Jun 16 2014 Ulrich Schwickerath <Ulrich.Schwickerath@cern.ch> -0.3.1-2
 - add sample for ceilodatastore cron 
 - backward compatibility fixings
 
