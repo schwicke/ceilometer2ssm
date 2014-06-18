@@ -1,0 +1,320 @@
+#!/usr/bin/env python
+import httplib
+import urllib
+import json
+import cStringIO
+import pycurl
+import re
+import os
+import sys
+from pwd import getpwnam
+from dateutil import parser
+import urlparse
+from dirq.QueueSimple import QueueSimple
+import argparse
+import subprocess
+import shlex
+from time import localtime, strftime
+import logging
+
+state_map = {
+    # from https://wiki.egi.eu/wiki/Fedcloud-tf:WorkGroups:Scenario4
+    "active": "started",
+    "build": "started",
+    "deleted": "completed",
+    "error": "error",
+    "hard_reboot": "started",
+    "migrating": "started",
+    "paused": "paused",
+    "reboot": "started",
+    "rebuild": "started",
+    "confirming_resize": "started",
+    "rescue": "started",
+    "resize": "started",
+    "revert_resize": "started",
+    "password": "started",
+    "verify_resize": "started",
+    "shutoff": "completed",
+    "suspended": "suspended",
+    "terminated": "completed",
+    "stopped": "completed",
+    "saving": "started"
+    }
+
+
+def read_config(filename):
+    # read the mapping of project-id to accounting group from a file
+    try:
+        f = open(filename,"r")
+        try:
+            result=json.loads(f.read())
+            f.close
+            return result
+        except:
+            print >> sys.stderr, 'ERROR: Cannot parse configuration file ' + filename
+            exit(1)
+    except IOError:
+        print >> sys.stderr, 'ERROR: Cannot open configuration file ' + filename
+        exit(1)
+
+def auth_keystone_v3(keystoneserver, username, password, domain, tenant, token, debug ):
+    lgr.debug("Trying to authenticate with keystone")
+    if (token):
+        auth='{"auth":{"scope": {"project": {"id":"'+tenant+'"}},"identity":{"methods":["token"],"token":{"id": "'+token+'"}}}}'
+    else:
+        auth='{"auth":{"identity":{"methods":["password"],"password":{"user": {"name": "'+username+'", "password":"'+password+'","domain":{"name":"'+domain+'"}}}}}}'
+    auth_server = urlparse.urlparse(keystoneserver)[1]
+    auth_protocol = urlparse.urlparse(keystoneserver)[0]
+    auth_path = urlparse.urlparse(keystoneserver)[2]
+    auth_port = auth_server.split(":")[1]
+    endpoint = auth_protocol+"://"+auth_server+"/v3/auth/tokens"
+    if (debug):
+      print "keystone auth request for v3 user" + username + " project: "+tenant
+    buf    = cStringIO.StringIO()
+    header = cStringIO.StringIO()
+    c = pycurl.Curl()
+    c.setopt(c.URL, endpoint.encode('ascii','ignore'))
+    c.setopt(c.FOLLOWLOCATION, 1)
+    c.setopt(c.MAXREDIRS, 5)
+    c.setopt(c.WRITEFUNCTION, buf.write)
+    c.setopt(c.HEADERFUNCTION, header.write)
+    #c.setopt(c.CAINFO,cacert.encode('ascii','ignore'))
+    c.setopt(c.HTTPHEADER, ['Accept: application/json', 'Content-Type: application/json'])
+    c.setopt(c.POSTFIELDS, auth.encode('ascii','ignore'))
+    try:
+        c.perform()
+        answer=buf.getvalue()
+        if (debug):
+           print answer
+        response = header.getvalue()
+        headers = dict(re.findall(r"(?P<name>.*?): (?P<value>.*?)\r\n", response))
+        if (debug):
+          print headers
+        token = headers["X-Subject-Token"]
+        buf.close()
+        header.close()
+        lgr.debug("Keystone authentication success")
+        if (debug):
+            print >> sys.stderr, "Keystone V3 authentication succeeded: "+token
+        return token, answer
+    except pycurl.error, error:
+        errno, errstr = error
+        print  >> sys.stderr, 'An error occurred while doing the initial authentication: ', errstr
+        exit(1)
+
+def GetTenantsFromKeystone(verbose,debug,auth_url,keystone_response,tokenid):
+    lgr.debug("Trying to get the tenant list from keystone")
+    decoded = json.loads(keystone_response)
+    keystone_protocol = urlparse.urlparse(auth_url)[0]
+    keystone_server   = urlparse.urlparse(auth_url)[1]
+    keystone_port     = urlparse.urlparse(auth_url)[2]
+    uri='/v2.0/tenants'
+    queryurl = keystone_protocol + "://"+keystone_server
+    if keystone_protocol == "https":
+        NEWconn = httplib.HTTPSConnection
+    else:
+        NEWconn = httplib.HTTPConnection
+    query = {}
+    data = json.dumps(query)
+    header = {"Content-type": "application/json", "X-Auth-Token": tokenid.encode('ascii','ignore')}
+    req = 'GET'
+    if (debug):
+        print >> sys.stderr, "Query keystone server at: " + queryurl
+        print >> sys.stderr, "Query it with: :" + json.dumps(query , indent=2)
+    try:
+        get_cm_conn = NEWconn(keystone_server)
+        try:
+            get_cm_conn.request( req, uri, body=data, headers=header )
+            res = get_cm_conn.getresponse()
+            if res.status == 200:
+                lgr.debug("Tenant list retrieval success")
+                return json.loads( res.read() )
+        except:
+            print >> sys.stderr, "Failed to query keystone server at " + ceilometers
+            exit(1)
+    except:
+        print >> sys.stderr, "failed to create the connection object"
+
+def receive_data(verbose,debug,keystone_response,tokenid,start,end,meter):
+    decoded = json.loads(keystone_response)
+    if (meter == 'resources'):
+        uri='/v2/resources'
+    else:
+        uri='/v2/meters/%s' % meter
+
+    for endpoint in decoded["token"]["catalog"]:
+        if (endpoint["type"] == "metering"):
+            for ceilometers in endpoint["endpoints"]:
+                if ceilometers["interface"] == "public":
+                    ceilometer_server = urlparse.urlparse(ceilometers["url"])[1]
+                    ceilometer_protocol = urlparse.urlparse(ceilometers["url"])[0]
+                    if ceilometer_protocol == "https":
+                        NEWconn = httplib.HTTPSConnection
+                    else:
+                        NEWconn = httplib.HTTPConnection
+                    query = {"q":[{"field":"timestamp","op":"ge","value":start},{"field": "timestamp","op":"le","value":end}] }
+                    data = json.dumps(query)
+                    header = {"Content-type": "application/json", "X-Auth-Token": tokenid.encode('ascii','ignore')}
+                    req = 'GET'
+                    if (debug):
+                         print >> sys.stderr, "Query ceilometer server at: " + ceilometer_server + " at uri: " + uri
+                         print >> sys.stderr, "Query it with: :" + json.dumps(query , indent=2)
+                    try:
+                        get_cm_conn = NEWconn( ceilometer_server )
+                        try:
+                            get_cm_conn.request( req, uri, body=data, headers=header )
+                            res = get_cm_conn.getresponse()
+                            if res.status == 200:
+                                return json.loads( res.read() )
+                        except:
+                            print >> sys.stderr, "Failed to query ceilometer server at " + ceilometers
+                            sys.exit(1)
+                    except:
+                        print >> sys.stderr, "failed to create the connection object"
+
+aparser = argparse.ArgumentParser(description='Poll the ceilometer database and get the sample values')
+aparser.add_argument('-v', '--verbose', dest='verbose', action='store_true', help='be verbose',default=False)
+aparser.add_argument('-d', '--debug', dest='debug', action='store_true', help='produce debugging output',default=False)
+aparser.add_argument('-s', '--start', dest='start', action='store',help='start time for the publication',default="1970-01-01T00:00:00")
+aparser.add_argument('-e', '--end', dest='end', action='store', help='end time for the publicatin',default="2020-12-24T23:59:59")
+aparser.add_argument('-c', '--config', dest='configfile', action='store', help='ceilometer2ssm configuration file location',default="/etc/ceilodata.conf")
+
+args = aparser.parse_args()
+start = args.start
+end = args.end
+verbose = args.verbose
+debug = args.debug
+configfile = args.configfile
+
+log_level = logging.ERROR
+
+if (verbose) :
+    log_level = logging.INFO
+
+if (debug):
+    verbose = True
+    log_level = logging.DEBUG
+
+# configuring the log file
+
+lgr = logging.getLogger('ceilo_poll_script')
+lgr.setLevel(log_level)
+fh = logging.FileHandler(ceilo_data_poll_log_file)
+fh.setLevel(log_level)
+frmt = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+fh.setFormatter(frmt)
+lgr.addHandler(fh)
+
+# read mapping from configuation file
+
+config = read_config(configfile)
+try:
+    config_parameters = config["config_parameters"]
+except:
+    if (verbose):
+        print >> sys.stderr, "ERROR: No configuration parametes defined in the configuration file"
+try:
+    ceilo_data_poll_log_file=config_parameters["ceilo_data_poll_log_file"]
+except KeyError:
+    print >> sys.stderr, "ERROR: CEILO_DATA_STORE configuration parameters not set"
+    sys.exit(1)
+
+try:
+    secrets = config["secrets"]
+except:
+    if (verbose):
+        print >> sys.stderr, "ERROR: No secrets defined in the configuration file"
+
+try:
+    os_auth_url=secrets["os_auth_url"]
+except:
+    try:
+        os_auth_url=os.environ['OS_AUTH_URL']
+    except KeyError:
+        print >> sys.stderr, "ERROR: OS_AUTH_URL is not set"
+        sys.exit(1)
+try:
+    os_username=secrets["os_username"]
+except:
+    try:
+        os_username=os.environ['OS_USERNAME']
+    except KeyError:
+        print >> sys.stderr, "ERROR: OS_USERNAME is not set"
+        sys.exit(1)
+
+try:
+    os_password=secrets["os_password"]
+except:
+    try:
+        os_password=os.environ['OS_PASSWORD']
+    except KeyError:
+        print >> sys.stderr, "ERROR: OS_PASSWORD is not set"
+        sys.exit(1)
+
+try:
+    os_tenant_name=secrets["os_tenant_name"]
+except:
+    try:
+        os_tenant_name=os.environ['OS_TENANT_NAME']
+    except KeyError:
+        print >> sys.stderr, "ERROR: OS_TENANT_NAME is not set"
+        sys.exit(1)
+
+(init_token, init_auth)   =  auth_keystone_v3(os_auth_url,os_username,os_password,"default","default","",debug)
+
+
+lgr.debug("Keystone response")
+lgr.debug("token : %s", init_token)
+lgr.debug("auth : %s", json.dumps(init_auth, indent=2))
+
+tenants = GetTenantsFromKeystone(verbose,debug,os_auth_url,init_auth,init_token)
+lgr.debug("Tenant List : %s",json.dumps(tenants, indent=2))
+
+ssm_filtered = {}
+ssm_full = {}
+ceiloPollResult={}
+resultAggregate={}
+tenant_info={}
+counter=0
+lgr.debug("Parsing of tenants start here --------")
+for tenant in tenants["tenants"]:
+    counter=counter+1
+    tenant_id = tenant["id"]
+    tenant_name = tenant["name"]
+    lgr.debug("********************")
+    lgr.debug("Total Number of Tenants %s",len(tenants["tenants"]))
+    lgr.debug("star time : %s end time %s",start,end)
+    lgr.debug("Tenant Count : %s",counter)
+    lgr.debug("start time : %s end time %s ",start,end)
+    lgr.debug("tenant name is %s",tenant_name)
+    lgr.debug("......")
+    group = tenant_name.split(" ")[0]
+
+# get a skoped token for the current tenant
+    (token, auth)   =  auth_keystone_v3(os_auth_url,os_username,os_password,"default",tenant_id,init_token,debug)
+    instance = receive_data(verbose,debug,auth,token,start,end,'instance')
+    lgr.debug("printing instance info %s",json.dumps(instance,indent=2))
+    cpu_used = receive_data(verbose,debug,auth,token,start,end,'cpu')
+    lgr.debug("printing cpu info %s",json.dumps(cpu_used,indent=2))
+    net_in   = receive_data(verbose,debug,auth,token,start,end,'network.incoming.bytes')
+    lgr.debug("printing net_in info %s",json.dumps(net_in,indent=2))
+    net_out  = receive_data(verbose,debug,auth,token,start,end,'network.outgoing.bytes')
+    lgr.debug("printing net_out info %s",json.dumps(net_out,indent=2))
+
+    tmpCeiloPollResult={}
+    tmpCeiloPollResult={"cpu":cpu_used,"net_in":net_in,"net_out":net_out,"instance":instance} # aggregating the poll results
+    if(cpu_used or net_in or net_out):
+        lgr.debug("Data present in %s",tenant_name)
+        lgr.debug("previous tenant list %s",tenant_info)
+        tenant_info[tenant_id]=tenant_name
+        lgr.debug("tenant list with data %s",tenant_info)
+        ceiloPollResult[tenant_id]=tmpCeiloPollResult
+    else:
+        lgr.debug("No data in %s ",tenant_name)
+lgr.debug("Aggregate results %s",json.dumps(ceiloPollResult))
+lgr.debug("tenant names ##### %s",tenant_info)
+resultAggregate={"t_info":tenant_info,"c_data":ceiloPollResult}
+lgr.debug("Aggregate Result %s",json.dumps(resultAggregate))
+
+# return the result
+print json.dumps(resultAggregate,indent=2)

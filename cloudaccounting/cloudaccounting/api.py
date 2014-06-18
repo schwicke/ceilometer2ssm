@@ -10,6 +10,7 @@ from sqlalchemy.orm import scoped_session, sessionmaker
 from sqlalchemy.sql import select
 import uuid
 import sqlalchemy
+import json
 #from models import Resources, MetricData
 #logging.basicConfig(filename='db.log')
 #logging.getLogger('sqlalchemy.engine').setLevel(logging.INFO)
@@ -70,22 +71,27 @@ def store_data(resource_info,metric_info, start_time, end_time,lgr):
 
 
         cpu_counter_volume=None
+        instance_counter_volume=None
         net_in_counter_volume=None
         net_out_counter_volume=None
 
         cpu_counter_type=None
+        instance_counter_type=None
         net_in_counter_type=None
         net_out_counter_type=None
 
         cpu_counter_source=None
+        instance_counter_source=None
         net_in_counter_source=None
         net_out_counter_source=None
 
         cpu_counter_sample_time=None
+        instance_counter_sample_time=None
         net_in_counter_sample_time=None
         net_out_counter_sample_time=None
 
         cpu_counter_unit=None
+        instance_counter_unit=None
         net_in_counter_unit=None
         net_out_counter_unit=None
 
@@ -98,18 +104,28 @@ def store_data(resource_info,metric_info, start_time, end_time,lgr):
             cpu_counter_unit=counter_unit
             cpu_counter_volume=counter_volume
             cpu_counter_sample_time=sample_time
+        elif  counter_name=="instance":
+            instance_counter_source=source
+            instance_counter_type=counter_type
+            instance_counter_unit=counter_unit
+            instance_counter_volume=counter_volume
+            instance_counter_sample_time=sample_time
         elif counter_name=="network.incoming.bytes":
             net_in_counter_source=source
             net_in_counter_type=counter_type
             net_in_counter_unit=counter_unit
             net_in_counter_volume=counter_volume
             net_in_counter_sample_time=sample_time
-        else:
+        elif counter_name=="network.outgoing.bytes":
             net_out_counter_source=source
             net_out_counter_type=counter_type
             net_out_counter_unit=counter_unit
             net_out_counter_volume=counter_volume
             net_out_counter_sample_time=sample_time
+        else:
+            lgr.error("unknown counter name in db-api")
+            pass
+        
 
         try:
             if res_resources is not None:
@@ -158,7 +174,7 @@ def store_data(resource_info,metric_info, start_time, end_time,lgr):
                 db_session.add(new_resource)
                 db_session.commit()
         except IntegrityError,message:
-            lgr.info('DB Error Occured %s', message[0])
+            lgr.debug('DB Error Occured %s', message[0])
             db_session.rollback()
         try:
             group_name="default"
@@ -233,6 +249,31 @@ def store_data(resource_info,metric_info, start_time, end_time,lgr):
                 if cpu_counter_unit is not None and cpu_counter_unit != "":
                     res_current_record.cpu_counter_unit = cpu_counter_unit
 
+                if instance_counter_volume is not None and instance_counter_volume != "":
+                    if (res_current_record.instance_counter_volume is not None):
+                        try:
+                            tmp=float(res_current_record.instance_counter_volume)
+                            counter_volume_in_db=long(tmp)
+                            counter_volume_poll=long(instance_counter_volume)
+                            if(counter_volume_poll>counter_volume_in_db):
+                                res_current_record.instance_counter_volume = instance_counter_volume
+                                if instance_counter_sample_time is not None and instance_counter_sample_time != "":
+                                    res_current_record.instance_counter_sample_time = instance_counter_sample_time
+                        except:
+                             res_current_record.instance_counter_volume = instance_counter_volume
+                             if instance_counter_sample_time is not None and instance_counter_sample_time != "":
+                                res_current_record.instance_counter_sample_time = instance_counter_sample_time
+                    else:
+                        res_current_record.instance_counter_volume = instance_counter_volume
+                        if instance_counter_sample_time is not None and instance_counter_sample_time != "":
+                            res_current_record.instance_counter_sample_time = instance_counter_sample_time
+                if instance_counter_source is not None and instance_counter_source != "":
+                    res_current_record.instance_counter_source =instance_counter_source
+                if instance_counter_type is not None and instance_counter_type != "":
+                    res_current_record.instance_counter_type = instance_counter_type
+                if instance_counter_unit is not None and instance_counter_unit != "":
+                    res_current_record.instance_counter_unit = instance_counter_unit
+
 
                 if net_in_counter_volume is not None and net_in_counter_volume != "":
                     if res_current_record.net_in_counter_volume is not None:
@@ -294,16 +335,16 @@ def store_data(resource_info,metric_info, start_time, end_time,lgr):
                 new_record=CurrentRecord(user_id, project_id, resource_id,tenant_id,group_name,tenant_name,
                                            node,host_name,vmuuid,image_ref_url,state, vcpus,memory_mb,
                                            disk_gb,False,hep_spec, created_at, launched_at, deleted_at,
-                                           terminated_at,cpu_counter_volume, net_in_counter_volume,
-                                           net_out_counter_volume,cpu_counter_type,net_in_counter_type,
-                                           net_out_counter_type,cpu_counter_source,net_in_counter_source,
-                                           net_out_counter_source,cpu_counter_sample_time,net_in_counter_sample_time,
-                                           net_out_counter_sample_time,cpu_counter_unit,net_in_counter_unit,
+                                           terminated_at,instance_counter_volume,cpu_counter_volume, net_in_counter_volume,
+                                           net_out_counter_volume,instance_counter_type,cpu_counter_type,net_in_counter_type,
+                                           net_out_counter_type,instance_counter_source,cpu_counter_source,net_in_counter_source,
+                                           net_out_counter_source,instance_counter_sample_time,cpu_counter_sample_time,net_in_counter_sample_time,
+                                           net_out_counter_sample_time,instance_counter_unit,cpu_counter_unit,net_in_counter_unit,
                                            net_out_counter_unit)
                 db_session.add(new_record)
                 db_session.commit()
         except IntegrityError,message:
-            lgr.error('DB Error Occured %s', message[0])
+            #lgr.error('DB Error Occured %s', message[0])
             db_session.rollback()
 
 
@@ -321,6 +362,7 @@ def store_data(resource_info,metric_info, start_time, end_time,lgr):
         db_session.flush()
     except:
         lgr.debug("Error Occured while storing the data in the database")
+
 # retrieval of resource data
 
 def get_resource_info():

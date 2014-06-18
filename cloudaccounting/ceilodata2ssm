@@ -1,0 +1,1543 @@
+#!/usr/bin/python
+import sys
+sys.path.insert(0, '/usr/lib64/python2.6/site-packages/SQLAlchemy-0.7.8-py2.6-linux-x86_64.egg')
+import httplib
+import urllib
+import json
+import cStringIO
+import pycurl
+import re
+import os
+from pwd import getpwnam
+from dateutil import parser
+import urlparse
+from dirq.QueueSimple import QueueSimple
+import argparse
+import subprocess
+import shlex
+from datetime import date,datetime, timedelta
+from time import localtime, strftime
+from cloudaccounting import api as db_api
+from collections import defaultdict
+import logging
+
+mysql_url=""
+start_time=""
+end_time=""
+
+state_map = {
+    # from https://wiki.egi.eu/wiki/Fedcloud-tf:WorkGroups:Scenario4
+    "active": "started",
+    "build": "started",
+    "deleted": "completed",
+    "error": "error",
+    "hard_reboot": "started",
+    "migrating": "started",
+    "paused": "paused",
+    "reboot": "started",
+    "rebuild": "started",
+    "confirming_resize": "started",
+    "rescue": "started",
+    "resize": "started",
+    "revert_resize": "started",
+    "password": "started",
+    "verify_resize": "started",
+    "shutoff": "completed",
+    "suspended": "suspended",
+    "terminated": "completed",
+    "stopped": "completed",
+    "saving": "started"
+    }
+
+def read_config(filename):
+    # read the mapping of project-id to accounting group from a file
+    try:
+        f = open(filename,"r")
+        try:
+            result=json.loads(f.read())
+            f.close
+            return result
+        except:
+            print >> sys.stderr, 'ERROR: Cannot parse configuration file ' + filename
+            exit(1)
+    except IOError:
+        print >> sys.stderr, 'ERROR: Cannot open configuration file ' + filename
+        exit(1)
+
+
+# getting the sample volume and sampling time of the first sample
+
+def get_start_sample_info(row_list):
+    result={}
+    try:
+        start_sample_time=row_list[0]["sample_time"].strftime("%s");
+        start_sample_value=row_list[0]["counter_volume"];
+        resource_id=row_list[0]["r_id"]
+        for row in row_list:
+            sample_time=row["sample_time"]
+            r_id=row["r_id"]
+            sample_time=sample_time.strftime("%s");
+            sample_value=row["counter_volume"]
+            sample_value=float(sample_value)
+            start_sample_value=float(start_sample_value)
+            if(long(sample_value) < long(start_sample_value)):
+                start_sample_value=sample_value
+                start_sample_time=sample_time
+        result={"start_time":start_sample_time,"start_sample_value":start_sample_value}
+    except:
+        logging.info("Error Ocuured while calculating the start sample value")
+    return result
+
+# getting the sample volume and sampling time of the last sample
+
+def get_end_sample_info(row_list):
+     result={}
+     try:
+        end_sample_time=row_list[0]["sample_time"].strftime("%s");
+        end_sample_value=row_list[0]["counter_volume"];
+        resource_id=row_list[0]["r_id"]
+        for row in row_list:
+            sample_time=row["sample_time"]
+            sample_time=sample_time.strftime("%s");
+            r_id=row["r_id"]
+            sample_value=row["counter_volume"]
+            sample_value=float(sample_value)
+            end_sample_value=float(end_sample_value)
+            if(long(sample_value) > long(end_sample_value)):
+                end_sample_value=sample_value
+                end_sample_time=sample_time
+        result={"end_time":end_sample_time,"end_sample_value":end_sample_value}
+     except:
+        logging.info("Error Ocuured while calculating the end sample value")
+     return result
+
+
+# getting the ceilometer data stored the database
+
+def get_ceilo_data_from_database_history(start_time,end_time):
+    logging.info("Contacting the database")
+    logging.info("mysql url is %s ",mysql_url)
+    db_api.create_session(mysql_url) # starts the database session
+    resource_data={}
+    resource_data=db_api.get_resource_info() #get the resource data from the data
+    metric_data=db_api.get_metric_info(start_time,end_time) #get the metric data from the database
+    db_api.shutdown_session() # close the database session
+    logging.info("Database communication over")
+
+    # group the metric data based on resource ids
+
+    ceilo_data={}
+    tenant_info={}
+    sorted_resource_data={}
+    sorted_metric_data={}
+    try:
+        sorted_resource_data=extract_resource_info(resource_data,end_time)
+        for row in metric_data:
+            id=row["r_id"]
+            cpu_info=[]
+            net_in_info=[]
+            net_out_info=[]
+            for tmp_row in metric_data:
+                tmp_id=tmp_row["r_id"]
+                if(id==tmp_id):
+                    counter_name=tmp_row["counter_name"]
+                    if(counter_name=="cpu"):
+                        cpu_info.append(tmp_row)
+                    elif(counter_name=="network.incoming.bytes"):
+                        net_in_info.append(tmp_row)
+                    elif(counter_name=="network.outgoing.bytes"):
+                        net_out_info.append(tmp_row)
+            sorted_metric_data[id]={"cpu_info":cpu_info,"net_in_info":net_in_info,"net_out_info":net_out_info}
+    except:
+        logging.info("Error Occured While Sorting the database info")
+    ceilo_data={"resource_data":sorted_resource_data,"metric_data":sorted_metric_data}
+    return ceilo_data
+
+# extract the resource info and group it based on resource ids
+
+def extract_resource_info(resource_data,end_time):
+    sorted_resource_data={}
+    resource_id=""
+    for row in resource_data:
+        try:
+            resource_id=str(row["resource_id"]).strip()
+            tmp_resource_info={}
+            try:
+                tmp_resource_info["user_id"]=row["user_id"]
+            except:
+                pass
+            try:
+                tmp_resource_info["resource_id"]=row["resource_id"]
+            except:
+                pass
+            try:
+                tmp_resource_info["vmuuid"]=row["vmuuid"]
+            except:
+                pass
+            try:
+                tmp_resource_info["project_id"]=row["project_id"]
+            except:
+                pass
+            try:
+                tmp_resource_info["created_at"]=row["created_at"]
+            except:
+                pass
+            try:
+                tmp_resource_info["launched_at"]=row["launched_at"]
+            except:
+                pass
+            try:
+                tmp_resource_info["deleted_at"]=row["deleted_at"]
+            except:
+                pass
+            try:
+                tmp_resource_info["terminated_at"]=row["terminated_at"]
+            except:
+                pass
+            try:
+                tmp_resource_info["state"]=row["state"]
+            except:
+                pass
+            try:
+                tmp_resource_info["hep_spec"]=row["hep_spec"]
+            except:
+                pass
+            try:
+                tmp_resource_info["vcpus"]=row["vcpus"]
+            except:
+                pass
+            try:
+                tmp_resource_info["memory_mb"]=row["memory_mb"]
+            except:
+                pass
+            try:
+                tmp_resource_info["host_name"]=row["host_name"]
+            except:
+                pass
+            try:
+                tmp_resource_info["disk_gb"]=row["disk_gb"]
+            except:
+                pass
+            try:
+                tmp_resource_info["tenant_id"]=row["tenant_id"]
+            except:
+                pass
+            try:
+                tmp_resource_info["tenant_name"]=row["tenant_name"]
+            except:
+                pass
+            try:
+                tmp_resource_info["deleted"]=row["deleted"]
+            except:
+                pass
+            try:
+                tmp_resource_info["image_ref_url"]=row["image_ref_url"]
+            except:
+                pass
+            try:
+                tmp_resource_info["node"]=row["node"]
+            except:
+                pass
+            group_name="default"
+            try:
+                tenant_name=row["tenant_name"]
+                if("-" in tenant_name):
+                    group_name=tenant_name.split("-")[0]
+                group_name=tenant_name.split()[0]
+            except:
+                logging.info("Group name is default")
+            wall_duration=0
+            try:
+                terminated_time=row["terminated_at"]
+                launched_time=row["launched_at"]
+                if(terminated_time is not None and launched_time is not None):
+                    terminated_time=terminated_time.strftime("%s")
+                    launched_time=(launched_time).strftime("%s")
+                    wall_duration= (int)(terminated_time)-(int)(launched_time)
+                elif launched_time is not None:
+                    launched_time=(launched_time).strftime("%s")
+                    end_time_in_ms=end_time.strftime("%s")
+                    wall_duration=(int)(end_time_in_ms)-(int)(launched_time)
+                elif(launched_time is None):
+                    logging.info("Launch Time is not available")
+            except:
+                logging.info("Error Occured while calculating wall duration")
+            tmp_resource_info["group_name"]=group_name
+            tmp_resource_info["wall_duration"]=wall_duration
+            sorted_resource_data[resource_id]=tmp_resource_info
+        except:
+            logging.info("Error occured while finding the resource id")
+    return sorted_resource_data
+
+# makes the input for the ssm coversion module
+
+def ssm_input_creation_history(ceilo_data,hide_names):
+    ssm_input_data={}
+    sorted_resource_data=ceilo_data["resource_data"]
+    sorted_metric_data=ceilo_data["metric_data"]
+    for resource_id in sorted_metric_data.keys():
+        logging.info("ssm input creation for historical data started")
+        resource_info={}
+        try:
+            resource_info=sorted_resource_data[resource_id]
+            sorted_item=sorted_metric_data[resource_id]
+            cpu_info=sorted_item["cpu_info"]
+            net_in_info=sorted_item["net_in_info"]
+            net_out_info=sorted_item["net_out_info"]
+            tmp_cpu_ssm={}
+            tmp_net_in_ssm={}
+            tmp_net_out_ssm={}
+            if(cpu_info):
+                start_sample_info=get_start_sample_info(cpu_info)
+                end_sample_info=get_end_sample_info(cpu_info)
+                try:
+                    tmp_cpu_ssm["resource_id"]=resource_info["resource_id"]
+                except:
+                    pass
+                try:
+                    tmp_cpu_ssm["user_id"]=resource_info["user_id"]
+                except:
+                    pass
+                try:
+                    tmp_cpu_ssm["tenant_id"]=resource_info["tenant_id"]
+                except:
+                    pass
+                try:
+                    tmp_cpu_ssm["tenant_name"]=resource_info["tenant_name"]
+                except:
+                    pass
+                try:
+                    tmp_cpu_ssm["group_name"]=resource_info["group_name"]
+                except:
+                    pass
+                try:
+                    tmp_cpu_ssm["node"]=resource_info["node"]
+                except:
+                    pass
+                try:
+                    tmp_cpu_ssm["hep_spec"]=resource_info["hep_spec"]
+                except:
+                    pass
+                try:
+                    tmp_cpu_ssm["host_name"]=resource_info["host_name"]
+                except:
+                    pass
+                try:
+                    tmp_cpu_ssm["vmuuid"]=resource_info["vmuuid"]
+                except:
+                    pass
+                try:
+                    tmp_cpu_ssm["image_ref_url"]=resource_info["image_ref_url"]
+                except:
+                    pass
+                try:
+                    tmp_cpu_ssm["vcpus"]=resource_info["vcpus"]
+                except:
+                    pass
+                try:
+                    tmp_cpu_ssm["memory_mb"]=resource_info["memory_mb"]
+                except:
+                    pass
+                try:
+                    tmp_cpu_ssm["disk_gb"]=resource_info["disk_gb"]
+                except:
+                    pass
+                try:
+                    tmp_cpu_ssm["state"]=resource_info["state"]
+                except:
+                    pass
+                try:
+                    tmp_cpu_ssm["deleted"]=resource_info["deleted"]
+                except:
+                    pass
+                try:
+                    tmp_cpu_ssm["wall_duration"]=resource_info["wall_duration"]
+                except:
+                    pass
+                try:
+                    tmp_cpu_ssm["start_time"]=resource_info["launched_at"]
+                except:
+                    pass
+                try:
+                    tmp_cpu_ssm["end_time"]=resource_info["terminated_at"]
+                except:
+                    pass
+                try:
+                    tmp_cpu_ssm["counter_unit"]=cpu_info["counter_unit"]
+                except:
+                    pass
+                try:
+                    tmp_cpu_ssm["source"]=cpu_info["source"]
+                except:
+                    pass
+                try:
+                    tmp_cpu_ssm["start_counter_volume"]=start_sample_info["start_sample_value"]
+                except:
+                    pass
+                try:
+                    tmp_cpu_ssm["start_sample_time"]=start_sample_info["start_time"]
+                except:
+                    pass
+                try:
+                    tmp_cpu_ssm["end_counter_volume"]=end_sample_info["end_sample_value"]
+                except:
+                    pass
+                try:
+                    tmp_cpu_ssm["end_sample_time"]=end_sample_info["end_time"]
+                except:
+                    pass
+
+            if(net_in_info):
+                start_sample_info=get_start_sample_info(net_in_info)
+                end_sample_info=get_end_sample_info(net_in_info)
+                try:
+                    tmp_net_in_ssm["resource_id"]=resource_info["resource_id"]
+                except:
+                    pass
+                try:
+                    tmp_net_in_ssm["user_id"]=resource_info["user_id"]
+                except:
+                    pass
+                try:
+                    tmp_net_in_ssm["tenant_id"]=resource_info["tenant_id"]
+                except:
+                    pass
+                try:
+                    tmp_net_in_ssm["tenant_name"]=resource_info["tenant_name"]
+                except:
+                    pass
+                try:
+                    tmp_net_in_ssm["group_name"]=resource_info["group_name"]
+                except:
+                    pass
+                try:
+                    tmp_net_in_ssm["node"]=resource_info["node"]
+                except:
+                    pass
+                try:
+                    tmp_net_in_ssm["host_name"]=resource_info["host_name"]
+                except:
+                    pass
+                try:
+                    tmp_net_in_ssm["vmuuid"]=resource_info["vmuuid"]
+                except:
+                    pass
+                try:
+                    tmp_net_in_ssm["image_id"]=resource_info["image_ref_url"]
+                except:
+                    pass
+                try:
+                    tmp_net_in_ssm["vcpus"]=resource_info["vcpus"]
+                except:
+                    pass
+                try:
+                    tmp_net_in_ssm["memory_mb"]=resource_info["memory_mb"]
+                except:
+                    pass
+                try:
+                    tmp_net_in_ssm["disk_gb"]=resource_info["disk_gb"]
+                except:
+                    pass
+                try:
+                    tmp_net_in_ssm["state"]=resource_info["state"]
+                except:
+                    pass
+                try:
+                    tmp_net_in_ssm["deleted"]=resource_info["deleted"]
+                except:
+                    pass
+                try:
+                    tmp_net_in_ssm["wall_duration"]==resource_info["wall_duration"]
+                except:
+                    pass
+                try:
+                    tmp_net_in_ssm["start_time"]=resource_info["launched_at"]
+                except:
+                    pass
+                try:
+                    tmp_net_in_ssm["end_time"]=resource_info["terminated_at"]
+                except:
+                    pass
+                try:
+                    tmp_net_in_ssm["counter_unit"]=net_in_info["counter_unit"]
+                except:
+                    pass
+                try:
+                    tmp_net_in_ssm["source"]=net_in_info["source"]
+                except:
+                    pass
+                try:
+                    tmp_net_in_ssm["start_counter_volume"]=start_sample_info["start_sample_value"]
+                except:
+                    pass
+                try:
+                    tmp_net_in_ssm["start_sample_time"]=start_sample_info["start_time"]
+                except:
+                    pass
+                try:
+                    tmp_net_in_ssm["end_counter_volume"]=end_sample_info["end_sample_value"]
+                except:
+                    pass
+                try:
+                    tmp_net_in_ssm["end_sample_time"]=end_sample_info["end_time"]
+                except:
+                    pass
+    
+            if(net_out_info):
+                start_sample_info=get_start_sample_info(net_out_info)
+                end_sample_info=get_end_sample_info(net_out_info)
+                try:
+                    tmp_net_out_ssm["resource_id"]=resource_info["resource_id"]
+                except:
+                    pass
+                try:
+                    tmp_net_out_ssm["user_id"]=resource_info["user_id"]
+                except:
+                    pass
+                try:
+                    tmp_net_out_ssm["tenant_id"]=resource_info["tenant_id"]
+                except:
+                    pass
+                try:
+                    tmp_net_out_ssm["tenant_name"]=resource_info["tenant_name"]
+                except:
+                    pass
+                try:
+                    tmp_net_out_ssm["group_name"]=resource_info["group_name"]
+                except:
+                    pass
+                try:
+                    tmp_net_out_ssm["node"]=resource_info["node"]
+                except:
+                    pass
+                try:
+                    tmp_net_out_ssm["host_name"]=resource_info["host_name"]
+                except:
+                    pass
+                try:
+                    tmp_net_out_ssm["vmuuid"]=resource_info["vmuuid"]
+                except:
+                    pass
+                try:
+                    tmp_net_out_ssm["image_id"]=resource_info["image_ref_url"]
+                except:
+                    pass
+                try:
+                    tmp_net_out_ssm["vcpus"]=resource_info["vcpus"]
+                except:
+                    pass
+                try:
+                    tmp_net_out_ssm["memory_mb"]=resource_info["memory_mb"]
+                except:
+                    pass
+                try:
+                    tmp_net_out_ssm["disk_gb"]=resource_info["disk_gb"]
+                except:
+                    pass
+                try:
+                    tmp_net_out_ssm["state"]=resource_info["state"]
+                except:
+                    pass
+                try:
+                    tmp_net_in_ssm["deleted"]=resource_info["deleted"]
+                except:
+                    pass
+                try:
+                    tmp_net_out_ssm["wall_duration"]=resource_info["wall_duration"]
+                except:
+                    pass
+                try:
+                    tmp_net_in_ssm["start_time"]=resource_info["launched_at"]
+                except:
+                    pass
+                try:
+                    tmp_net_in_ssm["end_time"]=resource_info["terminated_at"]
+                except:
+                    pass
+                try:
+                    tmp_net_out_ssm["counter_unit"]=net_in_info["counter_unit"]
+                except:
+                    pass
+                try:
+                    tmp_net_out_ssm["source"]=net_in_info["source"]
+                except:
+                    pass
+                try:
+                    tmp_net_out_ssm["start_counter_volume"]=start_sample_info["start_sample_value"]
+                except:
+                    pass
+                try:
+                    tmp_net_out_ssm["start_sample_time"]=start_sample_info["start_time"]
+                except:
+                    pass
+                try:
+                    tmp_net_out_ssm["end_counter_volume"]=end_sample_info["end_sample_value"]
+                except:
+                    pass
+                try:
+                    tmp_net_out_ssm["end_sample_time"]=end_sample_info["end_time"]
+                except:
+                    pass
+        except:
+            logging.info("Possible database corruption detected ! %s",resource_id)
+        ssm_info={}
+        try:
+            ssm_input_data[resource_id]
+            cpu_ssm=ssm_input_data[resource_id]["cpu"]
+            net_in_ssm=ssm_input_data[resource_id]["net_in"]
+            net_out_ssm=ssm_input_data[resource_id]["net_out"]
+            if(tmp_cpu_ssm):
+                cpu_ssm=tmp_cpu_ssm
+            if(tmp_net_in_ssm):
+                net_in_ssm=tmp_net_in_ssm
+            if(tmp_net_out_ssm):
+                net_out_ssm=tmp_net_out_ssm
+            ssm_info={"cpu":cpu_ssm,"net_in":net_in_ssm,"net_out":net_out_ssm}
+        except KeyError:
+            ssm_info={"cpu":tmp_cpu_ssm,"net_in":tmp_net_in_ssm,"net_out":tmp_net_out_ssm}
+        ssm_input_data[resource_id]=ssm_info
+    logging.info("ssm input creation for historical data finished")
+    return ssm_input_data
+
+
+# ssm conversion module for historical data
+
+def print_ssm_data(ssm_input,sitename,history):
+    line = "APEL-cloud-message: %s\n" % "v0.2"
+    for resource_id in ssm_input.keys():
+        cpu_resource_info_for_ssm=ssm_input[resource_id]["cpu"]
+        net_in_resource_info_for_ssm=ssm_input[resource_id]["net_in"]
+        net_out_resource_info_for_ssm=ssm_input[resource_id]["net_out"]
+        if(cpu_resource_info_for_ssm ):
+            try:
+                line += "VMUUID: %s\n" % cpu_resource_info_for_ssm['vmuuid']
+            except:
+                line += "VMUUID: %s\n" % 0
+            line += "SiteName: %s\n" % sitename
+            try:
+                line += "MachineName: %s\n" % cpu_resource_info_for_ssm['host_name']
+            except:
+                line += "MachineName: NULL\n"
+            try:
+                line += "LocalUserId: %s\n" % str(cpu_resource_info_for_ssm['user_id'])
+            except:
+                line += "LocalUserId : NULL\n"
+            try:
+                line += "LocalGroupId: %s\n" % str(cpu_resource_info_for_ssm['group_name'])
+            except:
+                line += "LocalGroupId : NULL\n"
+            line += "GlobalUserName: NULL\n"
+            try:
+                line += "FQAN: %s\n" % str(cpu_resource_info_for_ssm['group_name'])
+            except:
+                line += "FQAN : NULL\n"
+            try:
+                line += "VO: %s\n" % str(cpu_resource_info_for_ssm['group_name'])
+            except:
+                line += "VO : NULL\n"
+            try:
+                line += "StartTime: %s\n" % str(cpu_resource_info_for_ssm['start_time'])
+            except:
+                line += "StartTime : NULL\n"
+            try:
+                line += "EndTime: %s\n" % str(cpu_resource_info_for_ssm['end_time'])
+            except:
+                line += "EndTime : NULL\n"
+            line += "SuspendDuration : NULL\n"
+            #try:
+            #    line += "HEP-SPEC: %s\n" % resource_info_for_ssm['hep_spec']
+            #except:
+            #    line += "HEP-SPEC : NULL\n"
+            try:
+                line += "WallDuration: %d\n" %  int(cpu_resource_info_for_ssm['wall_duration'])
+            except:
+                line += "WallDuration: %d\n" % 0
+            try:
+                line += "CpuCount: %d\n" %  int(cpu_resource_info_for_ssm['vcpus'])
+            except:
+                line += "CpuCount: %d\n" % 0
+            try:
+                line += "Status: %s\n" %  state_map[str(cpu_resource_info_for_ssm['state'])]
+            except:
+                line += "Status: %s\n" % "NULL"
+            if history:
+                try:
+                    value=float(cpu_resource_info_for_ssm['end_counter_volume'])
+                    line += "CpuDuration: %d\n" %  int(0.5+float(value)/1000000000.0)
+                except:
+                    line += "CpuDuration: %d\n" % 0
+                try:
+                    value=float(net_in_resource_info_for_ssm['end_counter_volume'])
+                    line += "NetworkInbound: %d\n" %   int(0.5+float(value)/1073741824.0)
+                except:
+                    line += "NetworkInbound: %d\n" % 0
+                try:
+                    value=float(net_out_resource_info_for_ssm['end_counter_volume'])
+                    line += "NetworkOutbound: %d\n" %   int(0.5+float(value)/1073741824.0)
+                except:
+                    line += "NetworkOutbound: %d\n" % 0
+            else:
+                try:
+                    value=float(cpu_resource_info_for_ssm['counter_volume'])
+                    line += "CpuDuration: %d\n" %  int(0.5+float(value)/1000000000.0)
+                except:
+                    line += "CpuDuration: %d\n" % 0
+                try:
+                    value=float(net_in_resource_info_for_ssm['counter_volume'])
+                    line += "NetworkInbound: %d\n" %  int(0.5+float(value)/1073741824.0)
+                except:
+                    line += "NetworkInbound: %d\n" % 0
+                try:
+                    value=float(net_out_resource_info_for_ssm['counter_volume'])
+                    line += "NetworkOutbound: %d\n" %  int(0.5+float(value)/1073741824.0)
+                except:
+                    line += "NetworkOutbound: %d\n" % 0
+            line += "NetworkType : NULL\n"
+            line += "StorageRecordId : NULL\n"
+            try:
+                line += "Memory: %d\n" %  int(cpu_resource_info_for_ssm['memory_mb'])
+            except:
+                line += "Memory: %d\n" % 0
+            try:
+                line += "Disk: %d\n" %  int(cpu_resource_info_for_ssm['disk_gb'])
+            except:
+                line += "Disk: %d\n" % 0
+            try:
+                line += "ImageId: %s\n" % cpu_resource_info_for_ssm['image_id']
+            except:
+                line += "ImageId : NULL\n"
+            try:
+                line += "CloudType: %s\n" %  str(cpu_resource_info_for_ssm['source'])
+            except:
+                line += "CloudType: %s\n" % "NULL"
+    return line
+
+def report_generation(sorted_metric_info,history):
+    if history:
+        report="Last Update:" + strftime("%a, %d %b %Y %H:%M:%S", localtime())+"\n"
+        report += "| *Accounting group* | *VMs* | *VCPUs* | *memory* | *disk space* | *cpu time start* "\
+                   "| *cpu time end* | *net in start* |*net out start* | *net out end* |  \n"
+    else:
+        report="Last Update:" + strftime("%a, %d %b %Y %H:%M:%S", localtime())+"\n"
+        report += "| *Accounting group* | *VMs* | *VCPUs* | *memory* | *disk space* | *cpu time* "\
+                  " | *net in * |*net out * |  \n"
+    by_accgroup = {}
+    logging.debug(" report starting %s ",report)
+    counter=0
+    error_message=""
+    for resource_id in sorted_metric_info.keys():
+        cpu_info=sorted_metric_info[resource_id]["cpu"]
+        net_in_info=sorted_metric_info[resource_id]["net_in"]
+        net_out_info=sorted_metric_info[resource_id]["net_out"]
+        no_of_vcpus=0
+        memory_mb=0
+        disk_gb=0
+        tmp_error_message=""
+        tenant_name=""
+        tenant_id=""
+        errorFound=False
+        if cpu_info:
+            try:
+                tenant_name=cpu_info["tenant_name"]
+                tenant_id=cpu_info["tenant_id"]
+            except:
+                pass
+            if no_of_vcpus is  None or no_of_vcpus ==0:
+
+                try:
+                    no_of_vcpus=int(cpu_info["vcpus"])
+                except:
+                    no_of_vcpus=0
+                    logging.info("Exception occured while finding the no of vcpus")
+            if memory_mb is None or memory_mb==0:
+                try:
+                    memory=int(cpu_info["memory_mb"])
+                except:
+                    memory=0
+            if disk_gb is None or disk_gb==0:
+                 try:
+                    disk_gb=int(cpu_info["disk_gb"])
+                 except:
+                    disk_gb=0
+        else:
+            errorFound=True
+            tmp_error_message=tmp_error_message +"*NO_CPU_DATA*"
+
+        if  net_in_info:
+            try:
+                tenant_name=cpu_info["tenant_name"]
+                tenant_id=cpu_info["tenant_id"]
+            except:
+                pass
+            if no_of_vcpus is  None or no_of_vcpus ==0:
+                try:
+                    no_of_vcpus=int(net_in_info["vcpus"])
+                except:
+                    no_of_vcpus=0
+                    logging.info("Exception occured while finding the no of vcpus")
+            if memory_mb is None or memory_mb==0:
+                try:
+                    memory=int(net_in_info["memory_mb"])
+                except:
+                    memory=0
+            if disk_gb is None or disk_gb==0:
+                 try:
+                    disk_gb=int(net_in_info["disk_gb"])
+                 except:
+                    disk_gb=0
+        else:
+            errorFound=True
+            tmp_error_message=tmp_error_message+"*NO_NET_IN_DATA"
+
+        if  net_out_info:
+            try:
+                tenant_name=cpu_info["tenant_name"]
+                tenant_id=cpu_info["tenant_id"]
+            except:
+                pass
+            if no_of_vcpus is  None or no_of_vcpus ==0:
+                try:
+                    no_of_vcpus=int(net_out_info["vcpus"])
+                except:
+                    no_of_vcpus=0
+                    logging.info("Exception occured while finding the no of vcpus")
+            if memory_mb is None or memory_mb==0:
+                try:
+                    memory=int(net_out_info["memory_mb"])
+                except:
+                    memory=0
+            if disk_gb is None or disk_gb==0:
+                 try:
+                    disk_gb=int(net_out_info["disk_gb"])
+                 except:
+                    disk_gb=0
+        else:
+            errorFound=True
+            tmp_error_message=tmp_error_message+"*NO_NET_OUT_DATA*"
+        if no_of_vcpus==0:
+            errorFound=True
+            tmp_error_message=tmp_error_message+"*NO_VCPU_INFO*"
+        if errorFound==True:
+            tmp_error_message=resource_id +"*"+tenant_name+"*"+tenant_id+tmp_error_message
+            error_message=error_message+tmp_error_message +"\n"
+
+        if(cpu_info):
+            counter=counter+1
+            try:
+                group_name=cpu_info["group_name"]
+                try:
+                    by_accgroup[group_name]
+                except:
+                    by_accgroup[group_name]={}
+                if no_of_vcpus is not None and no_of_vcpus >0:
+                    try:
+                        by_accgroup[group_name]['no_of_vms'] += 1
+                    except KeyError:
+                        by_accgroup[group_name]['no_of_vms'] = 1
+                    try:
+                        by_accgroup[group_name]["no_of_vcpus"]+= no_of_vcpus
+                    except KeyError:
+                        by_accgroup[group_name]["no_of_vcpus"]= no_of_vcpus
+                    try:
+                        by_accgroup[group_name]["memory_in_mb"]+=memory
+                    except KeyError:
+                        by_accgroup[group_name]["memory_in_mb"]= memory
+                    try:
+                        by_accgroup[group_name]["disk_space_in_gb"]+=disk_space
+                    except KeyError:
+                        by_accgroup[group_name]["disk_space_in_gb"]= disk_space
+                if history:
+                    counter_volume=0
+                    try:
+                        value=float(cpu_info['start_counter_volume'])
+                        counter_volume=long(value)
+                    except:
+                        counter_volume=0
+                    try:
+                        by_accgroup[group_name]["cpu_count_start"]+= counter_volume
+                    except KeyError:
+                        by_accgroup[group_name]["cpu_count_start"]= counter_volume
+                        counter_volume=0
+                    try:
+                        value=float(cpu_info['end_counter_volume'])
+                        counter_volume=long(value)
+                    except:
+                        counter_volume=0
+                    try:
+                        by_accgroup[group_name]["cpu_count_end"]+= counter_volume
+                    except KeyError:
+                        by_accgroup[group_name]["cpu_count_end"]= counter_volume
+                else:
+                    counter_volume=0
+                    try:
+                        value=float(cpu_info['counter_volume'])
+                        counter_volume=long(value)
+                    except:
+                        counter_volume=0
+                    try:
+                        by_accgroup[group_name]["cpu_count"]+= counter_volume
+                    except KeyError:
+                        by_accgroup[group_name]["cpu_count"]= counter_volume
+                        counter_volume=0
+            except:
+                logging.info("Error occured while finding the group name")
+        if(net_in_info):
+            try:
+                group_name=net_in_info["group_name"]
+                try:
+                    by_accgroup[group_name]
+                except:
+                    by_accgroup[group_name]={}
+                if not cpu_info:
+                    if no_of_vcpus is not None and no_of_vcpus >0:
+                        try:
+                            by_accgroup[group_name]['no_of_vms'] += 1
+                        except KeyError:
+                            by_accgroup[group_name]['no_of_vms'] = 1
+                        try:
+                            by_accgroup[group_name]["no_of_vcpus"]+= no_of_vcpus
+                        except KeyError:
+                            by_accgroup[group_name]["no_of_vcpus"]= no_of_vcpus
+                        try:
+                            by_accgroup[group_name]["memory_in_mb"]+=memory
+                        except KeyError:
+                            by_accgroup[group_name]["memory_in_mb"]= memory
+                        try:
+                            by_accgroup[group_name]["disk_space_in_gb"]+=disk_space
+                        except KeyError:
+                            by_accgroup[group_name]["disk_space_in_gb"]= disk_space
+                if history:
+                    counter_volume=0
+                    try:
+                        value=float(net_in_info['start_counter_volume'])
+                        counter_volume=long(value)
+                    except:
+                        counter_volume=0
+                    try:
+                        by_accgroup[group_name]["net_in_count_start"]+= counter_volume
+                    except KeyError:
+                        by_accgroup[group_name]["net_in_count_start"]= counter_volume
+                    counter_volume=0
+                    try:
+                        value=float(net_in_info['end_counter_volume'])
+                        counter_volume=long(value)
+                    except:
+                        counter_volume=0
+                    try:
+                        by_accgroup[group_name]["net_in_count_end"]+= counter_volume
+                    except KeyError:
+                        by_accgroup[group_name]["net_in_count_end"]= counter_volume
+                else:
+                    counter_volume=0
+                    try:
+                        value=float(net_in_info['counter_volume'])
+                        counter_volume=long(value)
+                    except:
+                        counter_volume=0
+                    try:
+                        by_accgroup[group_name]["net_in_count"]+= counter_volume
+                    except KeyError:
+                        by_accgroup[group_name]["net_in_count"]= counter_volume
+                        counter_volume=0
+            except:
+                pass
+        if(net_out_info):
+            try:
+                group_name=net_out_info["group_name"]
+                try:
+                    by_accgroup[group_name]
+                except:
+                    by_accgroup[group_name]={}
+                if not cpu_info and not net_in_info:
+                    if no_of_vcpus is not None and no_of_vcpus >0:
+                        try:
+                            by_accgroup[group_name]['no_of_vms'] += 1
+                        except KeyError:
+                            by_accgroup[group_name]['no_of_vms'] = 1
+                        try:
+                            by_accgroup[group_name]["no_of_vcpus"]+= no_of_vcpus
+                        except KeyError:
+                            by_accgroup[group_name]["no_of_vcpus"]= no_of_vcpus
+                        try:
+                            by_accgroup[group_name]["memory_in_mb"]+=memory
+                        except KeyError:
+                            by_accgroup[group_name]["memory_in_mb"]= memory
+                        try:
+                            by_accgroup[group_name]["disk_space_in_gb"]+=disk_space
+                        except KeyError:
+                            by_accgroup[group_name]["disk_space_in_gb"]= disk_space
+                if history:
+                    counter_volume=0
+                    try:
+                        value=float(net_out_info['start_counter_volume'])
+                        counter_volume=long(value)
+                    except:
+                        counter_volume=0
+                    try:
+                        by_accgroup[group_name]["net_out_count_start"]+= counter_volume
+                    except KeyError:
+                        by_accgroup[group_name]["net_out_count_start"]= counter_volume
+                    counter_volume=0
+                    try:
+                        value=float(net_out_info['end_counter_volume'])
+                        counter_volume=long(value)
+                    except:
+                        counter_volume=0
+                    try:
+                        by_accgroup[group_name]["net_out_count_end"]+= counter_volume
+                    except KeyError:
+                        by_accgroup[group_name]["net_out_count_end"]= counter_volume
+                else:
+                    counter_volume=0
+                    try:
+                        value=float(net_out_info['counter_volume'])
+                        counter_volume=long(value)
+                    except:
+                        counter_volume=0
+                    try:
+                        by_accgroup[group_name]["net_out_count"]+= counter_volume
+                    except KeyError:
+                        by_accgroup[group_name]["net_out_count"]= counter_volume
+                        counter_volume=0
+            except:
+                pass
+    if error_message !="":
+        try:
+            f=open(error_file,'w')
+            f.write(error_message)
+            f.close()
+        except IOError:
+            print >>sys.stderr,"ERROR happened while writting to the error file"
+    logging.debug("report making started %s",by_accgroup)
+    for accgroup in by_accgroup.keys():
+        report += "\n| "+accgroup
+        try:
+            no_of_vms=by_accgroup[accgroup]['no_of_vms']
+            logging.debug("no of vms %s",no_of_vms)
+            report+="| "+str(no_of_vms)
+        except:
+            pass
+        try:
+            no_of_vcpus=by_accgroup[accgroup]['no_of_vcpus']
+            logging.debug("no of vcpus %s",no_of_vcpus)
+            report+="| "+str(no_of_vcpus)
+        except:
+            pass
+        try:
+            memory_in_mb=by_accgroup[accgroup]['memory_in_mb']
+            logging.debug("memory in mb %s",memory_in_mb)
+            report+="| "+str(memory_in_mb)
+        except:
+            pass
+        try:
+            disk_space_in_gb=by_accgroup[accgroup]['disk_space_in_gb']
+            logging.debug("disk space in gb %s",disk_space_in_gb)
+            report+="| "+str(disk_space_in_gb)
+        except:
+            pass
+        try:
+            cpu_count_start=by_accgroup[accgroup]['cpu_count_start']
+            logging.debug("cpu start count %s",cpu_count_start)
+            report+="| "+str(cpu_count_start)
+        except:
+            pass
+        if history:
+            try:
+                cpu_count_end=by_accgroup[accgroup]['cpu_count_end']
+                logging.debug("cpu count end %s",cpu_count_end)
+                report+="| "+str(cpu_count_end)
+            except:
+                pass
+            try:
+                net_in_count_start=by_accgroup[accgroup]['net_in_count_start']
+                logging.debug("start net in count %s",net_in_count_start)
+                report+="| "+str(net_in_count_start)
+            except:
+                pass
+            try:
+                net_in_count_end=by_accgroup[accgroup]['net_in_count_end']
+                logging.debug("end net in count  %s",net_in_count_end)
+                report+="| "+str(net_in_count_end)
+            except:
+                pass
+            try:
+                net_out_count_start=by_accgroup[accgroup]['net_out_count_start']
+                logging.debug("start net out count %s",net_out_count_start)
+                report+="| "+str(net_out_count_start)
+            except:
+                pass
+            try:
+                net_out_count_end=by_accgroup[accgroup]['net_out_count_end']
+                logging.debug("end net out count %s",net_out_count_end)
+                report+="| "+str(net_out_count_end)+"|"
+            except:
+                pass
+        else:
+            try:
+                cpu_count=by_accgroup[accgroup]['cpu_count']
+                logging.debug("cpu count %s",cpu_count)
+                report+="| "+str(cpu_count)
+            except:
+                pass
+            try:
+                net_in_count=by_accgroup[accgroup]['net_in_count']
+                logging.debug("net in count  %s",net_in_count)
+                report+="| "+str(net_in_count)
+            except:
+                pass
+            try:
+                net_out_count=by_accgroup[accgroup]['net_out_count']
+                logging.debug("net out count %s",net_out_count)
+                report+="| "+str(net_out_count)
+            except:
+                pass
+
+    logging.debug("................")
+    logging.debug("by accounting group %s",by_accgroup)
+    return report
+
+# ssm input creation for current data
+def ssm_input_creation_current(resource_data,hide_names):
+    ssm_input_data={}
+    for resource_info in resource_data:
+        cpu_counter_volume=resource_info["cpu_counter_volume"]
+        net_in_counter_volume=resource_info["net_in_counter_volume"]
+        net_out_counter_volume=resource_info["net_out_counter_volume"]
+        resource_id=resource_info["resource_id"]
+        tmp_cpu_ssm={}
+        tmp_net_in_ssm={}
+        tmp_net_out_ssm={}
+        wall_duration=0
+        end_time = datetime.now()
+        try:
+            terminated_time=resource_info["terminated_at"]
+            launched_time=resource_info["launched_at"]
+            if(terminated_time is not None and launched_time is not None):
+                terminated_time=terminated_time.strftime("%s")
+                launched_time=(launched_time).strftime("%s")
+                wall_duration= (int)(terminated_time)-(int)(launched_time)
+            elif launched_time is not None:
+                launched_time=(launched_time).strftime("%s")
+                end_time_in_ms=end_time.strftime("%s")
+                wall_duration=(int)(end_time_in_ms)-(int)(launched_time)
+            elif(launched_time is None):
+                loggin.info("Launch Time is not available")
+        except:
+            logging.info("Error Occured while calculating wall duration")
+
+        if cpu_counter_volume is not None :
+            try:
+                tmp_cpu_ssm["resource_id"]=resource_id
+            except:
+                pass
+            try:
+                tmp_cpu_ssm["user_id"]=resource_info["user_id"]
+            except:
+                pass
+            try:
+                tmp_cpu_ssm["tenant_id"]=resource_info["tenant_id"]
+            except:
+                pass
+            try:
+                tmp_cpu_ssm["tenant_name"]=resource_info["tenant_name"]
+            except:
+                pass
+
+            try:
+                tmp_cpu_ssm["group_name"]=resource_info["group_name"]
+            except:
+                pass
+            try:
+                tmp_cpu_ssm["node"]=resource_info["node"]
+            except:
+                pass
+            try:
+                tmp_cpu_ssm["hep_spec"]=resource_info["hep_spec"]
+            except:
+                pass
+            try:
+                tmp_cpu_ssm["host_name"]=resource_info["host_name"]
+            except:
+                pass
+            try:
+                tmp_cpu_ssm["vmuuid"]=resource_id
+            except:
+                pass
+            try:
+                tmp_cpu_ssm["image_ref_url"]=resource_info["image_ref_url"]
+            except:
+                pass
+            try:
+                tmp_cpu_ssm["start_time"]=resource_info["launched_at"]
+            except:
+                pass
+            try:
+                tmp_cpu_ssm["end_time"]=resource_info["terminated_at"]
+            except:
+                pass
+            try:
+                tmp_cpu_ssm["vcpus"]=resource_info["vcpus"]
+            except:
+                pass
+            try:
+                tmp_cpu_ssm["memory_mb"]=resource_info["memory_mb"]
+            except:
+                pass
+            try:
+                tmp_cpu_ssm["disk_gb"]=resource_info["disk_gb"]
+            except:
+                pass
+            try:
+                tmp_cpu_ssm["state"]=resource_info["state"]
+            except:
+                pass
+            try:
+                tmp_cpu_ssm["deleted"]=resource_info["deleted"]
+            except:
+                pass
+            try:
+                tmp_cpu_ssm["counter_unit"]=resource_info["cpu_counter_unit"]
+            except:
+                pass
+            try:
+                tmp_cpu_ssm["counter_type"]=resource_info["cpu_counter_type"]
+            except:
+                pass
+            try:
+                tmp_cpu_ssm["source"]=resource_info["cpu_counter_source"]
+            except:
+                pass
+            try:
+                tmp_cpu_ssm["counter_volume"]=cpu_counter_volume
+            except:
+                pass
+            tmp_cpu_ssm["wall_duration"]=wall_duration
+
+            try:
+                sample_time=resource_info["cpu_counter_sample_time"]
+                sample_time=sample_time.strftime("%s")
+                tmp_cpu_ssm["sample_time"]=sample_time
+            except:
+                pass
+        if net_in_counter_volume is not None:
+            try:
+                tmp_net_in_ssm["resource_id"]=resource_info["resource_id"]
+            except:
+                pass
+            try:
+                tmp_net_in_ssm["user_id"]=resource_info["user_id"]
+            except:
+                pass
+            try:
+                tmp_net_in_ssm["tenant_id"]=resource_info["tenant_id"]
+            except:
+                pass
+            try:
+                tmp_net_in_ssm["tenant_name"]=resource_info["tenant_name"]
+            except:
+                pass
+            try:
+                tmp_net_in_ssm["group_name"]=resource_info["group_name"]
+            except:
+                pass
+            try:
+                tmp_net_in_ssm["node"]=resource_info["node"]
+            except:
+                pass
+            try:
+                tmp_net_in_ssm["hep_spec"]=resource_info["hep_spec"]
+            except:
+                pass
+            try:
+                tmp_net_in_ssm["host_name"]=resource_info["host_name"]
+            except:
+                pass
+            try:
+                tmp_net_in_ssm["vmuuid"]=resource_info["vmuuid"]
+            except:
+                pass
+            try:
+                tmp_net_in_ssm["image_ref_url"]=resource_info["image_ref_url"]
+            except:
+                pass
+            try:
+                tmp_net_in_ssm["vcpus"]=resource_info["vcpus"]
+            except:
+                pass
+            try:
+                tmp_net_in_ssm["memory_mb"]=resource_info["memory_mb"]
+            except:
+                pass
+            try:
+                tmp_net_in_ssm["disk_gb"]=resource_info["disk_gb"]
+            except:
+                pass
+            try:
+                tmp_net_in_ssm["state"]=resource_info["state"]
+            except:
+                pass
+            try:
+                tmp_net_in_ssm["deleted"]=resource_info["deleted"]
+            except:
+                pass
+            try:
+                tmp_net_in_ssm["counter_unit"]=resource_info["cpu_counter_unit"]
+            except:
+                pass
+            try:
+                tmp_net_in_ssm["counter_type"]=resource_info["cpu_counter_type"]
+            except:
+                pass
+            try:
+                tmp_net_in_ssm["source"]=resource_info["cpu_counter_source"]
+            except:
+                pass
+            try:
+                tmp_net_in_ssm["counter_volume"]=net_in_counter_volume
+            except:
+                pass
+            tmp_net_in_ssm["wall_duration"]=wall_duration
+            try:
+                sample_time=resource_info["net_in_counter_sample_time"]
+                sample_time=sample_time.strftime("%s")
+                tmp_net_in_ssm["sample_time"]=sample_time
+            except:
+                pass
+        if net_out_counter_volume is not None:
+            try:
+                tmp_net_out_ssm["resource_id"]=resource_info["resource_id"]
+            except:
+                pass
+            try:
+                tmp_net_out_ssm["user_id"]=resource_info["user_id"]
+            except:
+                pass
+            try:
+                tmp_net_out_ssm["tenant_id"]=resource_info["tenant_id"]
+            except:
+                pass
+            try:
+                tmp_net_out_ssm["tenant_name"]=resource_info["tenant_name"]
+            except:
+                pass
+            try:
+                tmp_net_out_ssm["group_name"]=resource_info["group_name"]
+            except:
+                pass
+            try:
+                tmp_net_out_ssm["node"]=resource_info["node"]
+            except:
+                pass
+            try:
+                tmp_net_out_ssm["hep_spec"]=resource_info["hep_spec"]
+            except:
+                pass
+            try:
+                tmp_net_out_ssm["host_name"]=resource_info["host_name"]
+            except:
+                pass
+            try:
+                tmp_net_out_ssm["vmuuid"]=resource_info["vmuuid"]
+            except:
+                pass
+            try:
+                tmp_net_out_ssm["image_ref_url"]=resource_info["image_ref_url"]
+            except:
+                pass
+            try:
+                tmp_net_out_ssm["vcpus"]=resource_info["vcpus"]
+            except:
+                pass
+            try:
+                tmp_net_out_ssm["memory_mb"]=resource_info["memory_mb"]
+            except:
+                pass
+            try:
+                tmp_net_out_ssm["disk_gb"]=resource_info["disk_gb"]
+            except:
+                pass
+            try:
+                tmp_net_out_ssm["state"]=resource_info["state"]
+            except:
+                pass
+            try:
+                tmp_net_out_ssm["deleted"]=resource_info["deleted"]
+            except:
+                pass
+            try:
+                tmp_net_out_ssm["counter_unit"]=resource_info["cpu_counter_unit"]
+            except:
+                pass
+            try:
+                tmp_net_out_ssm["counter_type"]=resource_info["cpu_counter_type"]
+            except:
+                pass
+            try:
+                tmp_net_out_ssm["source"]=resource_info["cpu_counter_source"]
+            except:
+                pass
+            try:
+                tmp_net_out_ssm["counter_volume"]=net_out_counter_volume
+            except:
+                pass
+            tmp_net_out_ssm["wall_duration"]=wall_duration
+            try:
+                sample_time=resource_info["net_out_counter_sample_time"]
+                sample_time=sample_time.strftime("%s")
+                tmp_net_out_ssm["sample_time"]=resource_info["net_out_counter_sample_time"]
+            except:
+                pass
+        ssm_info={}
+        try:
+            ssm_input_data[resource_id]
+            cpu_ssm=ssm_input_data[resource_id]["cpu"]
+            net_in_ssm=ssm_input_data[resource_id]["net_in"]
+            net_out_ssm=ssm_input_data[resource_id]["net_out"]
+            if(tmp_cpu_ssm):
+                cpu_ssm=tmp_cpu_ssm
+            if(tmp_net_in_ssm):
+                net_in_ssm=tmp_net_in_ssm
+            if(tmp_net_out_ssm):
+                net_out_ssm=tmp_net_out_ssm
+            ssm_info={"cpu":cpu_ssm,"net_in":net_in_ssm,"net_out":net_out_ssm}
+        except KeyError:
+            ssm_info={"cpu":tmp_cpu_ssm,"net_in":tmp_net_in_ssm,"net_out":tmp_net_out_ssm}
+        ssm_input_data[resource_id]=ssm_info
+    logging.info("ssm input creation for historical data finished")
+    return ssm_input_data
+
+def get_ceilo_data_from_database_current():
+    logging.info("Contacting the database")
+    logging.info("mysql url is %s ",mysql_url)
+    db_api.create_session(mysql_url) # starts the database session
+    resource_data={}
+    resource_data=db_api.get_current_resource_record() #get the resource data from the data
+    db_api.shutdown_session() # close the database session
+    logging.info("Database communication over !!!!!!")
+    return resource_data
+
+today=date.today()
+yesterday = date.today() - timedelta(1)
+yesterday=str(yesterday)
+start_time=yesterday+" 00:00:00"
+end_time=yesterday+" 23:59:59"
+
+aparser = argparse.ArgumentParser(description='Publish ceilometer records to APEL using SSM2')
+aparser.add_argument('-p', '--publish', dest='publish', action='store_true', help='directly publish the data',default=False)
+aparser.add_argument('-v', '--verbose', dest="loglevel",action='store_const', help='be verbose',const=logging.INFO)
+aparser.add_argument('-j', '--json', dest='json', action='store_true', help='print the metric records in json',default=False)
+aparser.add_argument('-d', '--debug', dest='loglevel', action='store_const', help='produce debugging output',const=logging.DEBUG,default=logging.WARNING)
+aparser.add_argument('-s', '--start', dest='start', action='store',help='start time for the publication',default=start_time)
+aparser.add_argument('-e', '--end', dest='end', action='store', help='end time for the publicatin',default=end_time)
+aparser.add_argument('-c', '--config', dest='configfile', action='store', help='ceilometer2ssm configuration file location',default="/etc/ceilodata.conf")
+aparser.add_argument('-a', '--apelssmconfig',dest='apelssmconf',action='store', help='location of the apel-ssm configuration file', default='/etc/apel/sender.cfg')
+aparser.add_argument('-l', '--localreport',dest='localreport',action='store_true', help='Create also a local report in Twiki format. Implies --nofilter', default=False)
+aparser.add_argument('-n', '--dryrun',dest='dryrun',action='store_true', help='Dry run: do not actually publish', default=False)
+aparser.add_argument('-hst', '--history',dest='history',action='store_true', help='Make reports on historical data', default=False)
+aparser.add_argument('-t', '--day', dest='yesterday', action='store',help='Day to process. Must be in the past. Format: yyyy-mm-dd',default="unset")
+
+args = aparser.parse_args()
+start_time = args.start
+end_time = args.end
+logging.info("start time: %s",start_time)
+logging.info("end time: %s",end_time)
+#wall_duration=end_time.strftime("%s")-start_time.strftime("%s")
+publish = args.publish
+configfile = args.configfile
+apelssmconf = args.apelssmconf
+localreport = args.localreport
+dryrun = args.dryrun
+only_json = args.json
+history=args.history
+logging.basicConfig(level=args.loglevel)
+# read mapping from file
+config = read_config(configfile)
+mapping = config["mapping"]
+if (args.yesterday != 'unset'):
+    yesterday=args.yesterday
+    history=True
+if (publish and ! history):
+    logging.error("Fatal: -p option can only be used on historical information. Please add -hst or -t<date>")
+    sys.exit(1)
+
+    
+# database info
+try:
+    database_info=config["database"]
+    try:
+        mysql_user_name=database_info["user"]
+        mysql_password=database_info["password"]
+        database_name=database_info["database_name"]
+        mysql_url="mysql://"+mysql_user_name+":"+mysql_password+"@localhost:3306/"+database_name
+    except:
+        print >> sys.stderr, "ERROR: My sql user name and password has not been properly set"
+
+except:
+     print >> sys.stderr, "ERROR: No database info in the file"
+try:
+    config_parameters = config["config_parameters"]
+except:
+    if (verbose):
+        print >> sys.stderr, "ERROR: No configuration parametes defined in the configuration file"
+try:
+    error_file=config_parameters["reports_error_file"]
+except KeyError:
+    print >> sys.stderr, "ERROR: Error file is not set"
+    sys.exit(1)
+sitename = config["sitename"]
+report_groups = config["report_groups"]
+hide_names = config["hide_names"]
+logging.info("Polling the ceilometer data from database")
+ceilo_data={}
+ssm_input_data={}
+if(history):
+    ceilo_data=get_ceilo_data_from_database_history(start_time,end_time)
+    ssm_input_data=ssm_input_creation_history(ceilo_data,hide_names)
+else:
+    ceilo_data=get_ceilo_data_from_database_current()
+    ssm_input_data=ssm_input_creation_current(ceilo_data,hide_names)
+logging.info("Ceilometer data received")
+logging.info("ssm input creation started")
+
+logging.info("ssm input creation is over")
+logging.info("ssm converstion started")
+# getting the ssm record
+ssm_output=print_ssm_data(ssm_input_data,sitename,history)
+print "ssm output",ssm_output
+logging.info("The ssm conversion is over")
+logging.debug("ssm out is %s",ssm_output)
+logging.info("report creation started")
+reports= report_generation(ssm_input_data,history)
+print reports
+logging.info("report creation over")
+logging.debug("The report is %s",reports)
+
+if (publish):
+    dirq = QueueSimple('/var/spool/apel/outgoing/')
+    dirq.add(ssm_output)
+    command_line="/usr/bin/ssmsend --config " + apelssmconf
+    if (dryrun):
+        print >> sys.stderr, "Would now run \""+command_line+"\""
+    else:
+        args = shlex.split(command_line)
+        try:
+            p = subprocess.Popen(args)
+            if (p.wait() != 0):
+                print >> sys.stderr, p
+                sys.exit(1)
+        except:
+            print >> sys.stderr, "ERROR: Failed to send the message"
+            sys.exit(1)
+
+
+
+
+
+
+
+
+
+
+
+
+

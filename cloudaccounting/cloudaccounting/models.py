@@ -103,6 +103,12 @@ class CurrentRecord(BASE):
     cpu_counter_type = Column(String(32))
     cpu_counter_sample_time = Column(DateTime)
 
+    instance_counter_source = Column(String(64))
+    instance_counter_unit = Column(String(32))
+    instance_counter_volume = Column(String(64))
+    instance_counter_type = Column(String(32))
+    instance_counter_sample_time = Column(DateTime)
+
     net_in_counter_source = Column(String(64))
     net_in_counter_unit = Column(String(32))
     net_in_counter_volume = Column(String(64))
@@ -120,14 +126,14 @@ class CurrentRecord(BASE):
 
 
     def __init__(self,user_id, project_id, resource_id,tenant_id,group_name,tenant_name,
-        node,host_name,vmuuid,image_ref_url,state, vcpus,memory_mb,
-        disk_gb,deleted,hep_spec, created_at, launched_at, deleted_at,
-        terminated_at,cpu_counter_volume, net_in_counter_volume,
-        net_out_counter_volume,cpu_counter_type,net_in_counter_type,
-        net_out_counter_type,cpu_counter_source,net_in_counter_source,
-        net_out_counter_source,cpu_counter_sample_time,net_in_counter_sample_time,
-        net_out_counter_sample_time,cpu_counter_unit,net_in_counter_unit,
-        net_out_counter_unit):
+                                           node,host_name,vmuuid,image_ref_url,state, vcpus,memory_mb,
+                                           disk_gb,deleted,hep_spec, created_at, launched_at, deleted_at,
+                                           terminated_at,instance_counter_volume,cpu_counter_volume, net_in_counter_volume,
+                                           net_out_counter_volume,instance_counter_type,cpu_counter_type,net_in_counter_type,
+                                           net_out_counter_type,instance_counter_source,cpu_counter_source,net_in_counter_source,
+                                           net_out_counter_source,instance_counter_sample_time,cpu_counter_sample_time,net_in_counter_sample_time,
+                                           net_out_counter_sample_time,instance_counter_unit,cpu_counter_unit,net_in_counter_unit,
+                                           net_out_counter_unit):
         self.project_id = project_id
         self.resource_id = resource_id
         self.tenant_id=tenant_id
@@ -148,6 +154,12 @@ class CurrentRecord(BASE):
         self.cpu_counter_unit=cpu_counter_unit
         self.cpu_counter_volume=cpu_counter_volume
         self.cpu_counter_sample_time=cpu_counter_sample_time
+
+        self.instance_counter_type=instance_counter_type
+        self.instance_counter_source=instance_counter_source
+        self.instance_counter_unit=instance_counter_unit
+        self.instance_counter_volume=instance_counter_volume
+        self.instance_counter_sample_time=instance_counter_sample_time
 
         self.net_in_counter_type=net_in_counter_type
         self.net_in_counter_source=net_in_counter_source
