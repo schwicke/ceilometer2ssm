@@ -62,6 +62,8 @@ def getHepSpecData():
 
 # storing the resource data in the database
 def store_sorted_resource_data(sorted_resource_data,start_time,end_time,lgr):
+    #print "debug: store_sorted_resource_data called"
+    #print json.dumps(sorted_resource_data, indent=2)
     db_api.create_session(mysql_url) # starts the database session
     for resource_id in sorted_resource_data.keys():
         cpu_metric_info={}
@@ -92,8 +94,13 @@ def store_sorted_resource_data(sorted_resource_data,start_time,end_time,lgr):
             net_out_metric_info=sorted_resource_data[resource_id]["net_out_metric_info"]
         except:
             pass
-        #lgr.debug("Updation is going to start")
-        for cpu_sample in cpu_metric_info:
+        
+        #print "DEBUG: cpu debug starts here"
+        #print "Resource_id="+resource_id
+        #print json.dumps(cpu_metric_info, indent=2)
+        #print json.dumps(cpu_resource_info,indent=2)
+        #print "DEBUG: cpu debug ends here"
+        for cpu_sample in cpu_metric_info:            
             db_api.store_data(cpu_resource_info,cpu_sample,start_time,end_time,lgr)
         for instance_sample in instance_metric_info:
             db_api.store_data(instance_resource_info,instance_sample,start_time,end_time,lgr)
@@ -228,7 +235,8 @@ def get_sorted_resource_data(ceilo_data_per_tenant):
                     try:
                         sorted_resource_table[resource_id]["cpu_resource_info"]
                         metric_list= sorted_resource_table[resource_id]["cpu_metric_info"]
-                        metric_list.append(tmp_metric_info)
+                        if tmp_metric_info not in  metric_list:
+                            metric_list.append(tmp_metric_info)
                         sorted_resource_table[resource_id]["cpu_metric_info"]=metric_list
                     except:
                         sorted_resource_table[resource_id]["cpu_resource_info"]=tmp_resource_info
@@ -337,7 +345,8 @@ def get_sorted_resource_data(ceilo_data_per_tenant):
                     try:
                         sorted_resource_table[resource_id]["instance_resource_info"]
                         metric_list= sorted_resource_table[resource_id]["instance_metric_info"]
-                        metric_list.append(tmp_metric_info)
+                        if tmp_metric_info not in  metric_list:
+                            metric_list.append(tmp_metric_info)
                         sorted_resource_table[resource_id]["instance_metric_info"]=metric_list
                     except:
                         sorted_resource_table[resource_id]["instance_resource_info"]=tmp_resource_info
@@ -445,7 +454,8 @@ def get_sorted_resource_data(ceilo_data_per_tenant):
                     try:
                         sorted_resource_table[resource_id]["net_in_resource_info"]
                         metric_list= sorted_resource_table[resource_id]["net_in_metric_info"]
-                        metric_list.append(tmp_metric_info)
+                        if tmp_metric_info not in  metric_list:
+                            metric_list.append(tmp_metric_info) 
                         resource_id_table[resource_id]["net_in_metric_info"]=metric_list
                     except:
                         sorted_resource_table[resource_id]["net_in_resource_info"]=tmp_resource_info
@@ -553,7 +563,8 @@ def get_sorted_resource_data(ceilo_data_per_tenant):
                     try:
                         sorted_resource_table[resource_id]["net_out_resource_info"]
                         metric_list= sorted_resource_table[resource_id]["net_out_metric_info"]
-                        metric_list.append(tmp_metric_info)
+                        if tmp_metric_info not in  metric_list:
+                            metric_list.append(tmp_metric_info)
                         sorted_resource_table[resource_id]["net_out_metric_info"]=metric_list
                     except:
                         sorted_resource_table[resource_id]["net_out_resource_info"]=tmp_resource_info
@@ -767,7 +778,6 @@ for tmp_list in time_list:
                     tmp_resource_info.append(req_data)
             ceilo_data_filtered[counter_name]=tmp_resource_info
         ceilo_data_per_tenant[tenant_id]=ceilo_data_filtered
-        tmp_tenant_list=ceilo_data_per_tenant.keys()
-        sorted_resource_data=get_sorted_resource_data(ceilo_data_per_tenant)
-        store_sorted_resource_data(sorted_resource_data,start_time,end_time,lgr)
-        lgr.debug('Done with database update')
+    sorted_resource_data=get_sorted_resource_data(ceilo_data_per_tenant)
+    store_sorted_resource_data(sorted_resource_data,start_time,end_time,lgr)
+    lgr.debug('Done with database update')

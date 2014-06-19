@@ -710,6 +710,8 @@ def print_ssm_data(ssm_input,sitename,history):
                 line += "CloudType: %s\n" %  str(cpu_resource_info_for_ssm['source'])
             except:
                 line += "CloudType: %s\n" % "NULL"
+            line += "%s\n" % "%%"
+                
     return line
 
 def report_generation(sorted_metric_info,history):
@@ -1456,7 +1458,7 @@ mapping = config["mapping"]
 if (args.yesterday != 'unset'):
     yesterday=args.yesterday
     history=True
-if (publish and ! history):
+if (publish and not history):
     logging.error("Fatal: -p option can only be used on historical information. Please add -hst or -t<date>")
     sys.exit(1)
 

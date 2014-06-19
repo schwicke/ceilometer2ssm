@@ -5,7 +5,7 @@
 %endif
 Summary: OpenStack Ceilometer to SSM2 interface
 Name: ceilometer2ssm
-Version: 0.3.2
+Version: 0.3.3
 Release: 1%{?dist}
 License: ASL 2.0
 Vendor: CERN, ASGC
@@ -64,6 +64,11 @@ rm -rf $RPM_BUILD_ROOT
 %dir /var/log/ceilodata
 
 %changelog
+
+* Wed Jun 18 2014 Ulrich Schwickerath <Ulrich.Schwickerath@cern.ch> -0.3.3-1
+- protect against doublication of data in lists
+- fix intendation in main loop
+- fix format of ssm records
 
 * Tue Jun 17 2014 Ulrich Schwickerath <Ulrich.Schwickerath@cern.ch> -0.3.2-1
 - add instance meter to get also the terminated instances

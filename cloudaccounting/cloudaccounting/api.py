@@ -174,7 +174,7 @@ def store_data(resource_info,metric_info, start_time, end_time,lgr):
                 db_session.add(new_resource)
                 db_session.commit()
         except IntegrityError,message:
-            lgr.debug('DB Error Occured %s', message[0])
+            lgr.info('DB Error Occured %s', message[0])
             db_session.rollback()
         try:
             group_name="default"
