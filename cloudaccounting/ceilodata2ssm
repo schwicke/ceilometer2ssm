@@ -327,7 +327,7 @@ def ssm_input_creation_history(ceilo_data,hide_names):
                 except:
                     pass
                 try:
-                    tmp_cpu_ssm["image_ref_url"]=resource_info["image_ref_url"]
+                    tmp_cpu_ssm["image_id"]=resource_info["image_ref_url"]
                 except:
                     pass
                 try:
@@ -609,11 +609,11 @@ def print_ssm_data(ssm_input,sitename,history):
         net_in_resource_info_for_ssm=ssm_input[resource_id]["net_in"]
         net_out_resource_info_for_ssm=ssm_input[resource_id]["net_out"]
         if(cpu_resource_info_for_ssm ):
+            line += "SiteName: %s\n" % sitename
             try:
                 line += "VMUUID: %s\n" % cpu_resource_info_for_ssm['vmuuid']
             except:
                 line += "VMUUID: %s\n" % 0
-            line += "SiteName: %s\n" % sitename
             try:
                 line += "MachineName: %s\n" % cpu_resource_info_for_ssm['host_name']
             except:
@@ -621,29 +621,29 @@ def print_ssm_data(ssm_input,sitename,history):
             try:
                 line += "LocalUserId: %s\n" % str(cpu_resource_info_for_ssm['user_id'])
             except:
-                line += "LocalUserId : NULL\n"
+                line += "LocalUserId: NULL\n"
             try:
                 line += "LocalGroupId: %s\n" % str(cpu_resource_info_for_ssm['group_name'])
             except:
-                line += "LocalGroupId : NULL\n"
+                line += "LocalGroupId: NULL\n"
             line += "GlobalUserName: NULL\n"
             try:
                 line += "FQAN: %s\n" % str(cpu_resource_info_for_ssm['group_name'])
             except:
-                line += "FQAN : NULL\n"
+                line += "FQAN: NULL\n"
             try:
                 line += "VO: %s\n" % str(cpu_resource_info_for_ssm['group_name'])
             except:
-                line += "VO : NULL\n"
+                line += "VO: NULL\n"
             try:
-                line += "StartTime: %s\n" % str(cpu_resource_info_for_ssm['start_time'])
+                line += "StartTime: %s\n" % parser.parse(str(cpu_resource_info_for_ssm['start_time'])).strftime("%s")
             except:
-                line += "StartTime : NULL\n"
+                line += "StartTime: NULL\n"
             try:
-                line += "EndTime: %s\n" % str(cpu_resource_info_for_ssm['end_time'])
+                line += "EndTime: %s\n" % parser.parse(str(cpu_resource_info_for_ssm['end_time'])).strftime("%s")
             except:
-                line += "EndTime : NULL\n"
-            line += "SuspendDuration : NULL\n"
+                line += "EndTime: NULL\n"
+            # line += "SuspendDuration : NULL\n"
             #try:
             #    line += "HEP-SPEC: %s\n" % resource_info_for_ssm['hep_spec']
             #except:
@@ -692,8 +692,8 @@ def print_ssm_data(ssm_input,sitename,history):
                     line += "NetworkOutbound: %d\n" %  int(0.5+float(value)/1073741824.0)
                 except:
                     line += "NetworkOutbound: %d\n" % 0
-            line += "NetworkType : NULL\n"
-            line += "StorageRecordId : NULL\n"
+            line += "NetworkType: NULL\n"
+            line += "StorageRecordId: NULL\n"
             try:
                 line += "Memory: %d\n" %  int(cpu_resource_info_for_ssm['memory_mb'])
             except:
@@ -705,11 +705,8 @@ def print_ssm_data(ssm_input,sitename,history):
             try:
                 line += "ImageId: %s\n" % cpu_resource_info_for_ssm['image_id']
             except:
-                line += "ImageId : NULL\n"
-            try:
-                line += "CloudType: %s\n" %  str(cpu_resource_info_for_ssm['source'])
-            except:
-                line += "CloudType: %s\n" % "NULL"
+                line += "ImageId: NULL\n"
+            line += "CloudType: %s\n" % "OpenStack"
             line += "%s\n" % "%%"
                 
     return line
@@ -1166,7 +1163,7 @@ def ssm_input_creation_current(resource_data,hide_names):
             except:
                 pass
             try:
-                tmp_cpu_ssm["image_ref_url"]=resource_info["image_ref_url"]
+                tmp_cpu_ssm["image_id"]=resource_info["image_ref_url"]
             except:
                 pass
             try:
@@ -1489,7 +1486,7 @@ except KeyError:
 sitename = config["sitename"]
 report_groups = config["report_groups"]
 hide_names = config["hide_names"]
-logging.info("Polling the ceilometer data from database")
+logging.debug("Polling the ceilometer data from database")
 ceilo_data={}
 ssm_input_data={}
 if(history):
@@ -1498,28 +1495,21 @@ if(history):
 else:
     ceilo_data=get_ceilo_data_from_database_current()
     ssm_input_data=ssm_input_creation_current(ceilo_data,hide_names)
-logging.info("Ceilometer data received")
-logging.info("ssm input creation started")
 
-logging.info("ssm input creation is over")
-logging.info("ssm converstion started")
 # getting the ssm record
 ssm_output=print_ssm_data(ssm_input_data,sitename,history)
-print "ssm output",ssm_output
-logging.info("The ssm conversion is over")
-logging.debug("ssm out is %s",ssm_output)
-logging.info("report creation started")
-reports= report_generation(ssm_input_data,history)
-print reports
-logging.info("report creation over")
-logging.debug("The report is %s",reports)
+
+logging.debug("ssm output:\n %s",ssm_output)
+if (localreport):
+    reports= report_generation(ssm_input_data,history)
+    logging.info("Local statistics\n %s",reports)
 
 if (publish):
     dirq = QueueSimple('/var/spool/apel/outgoing/')
     dirq.add(ssm_output)
     command_line="/usr/bin/ssmsend --config " + apelssmconf
     if (dryrun):
-        print >> sys.stderr, "Would now run \""+command_line+"\""
+        logging.debug("Would now run \"%s\"",command_line)
     else:
         args = shlex.split(command_line)
         try:

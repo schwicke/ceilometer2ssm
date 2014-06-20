@@ -6,7 +6,7 @@
 Summary: OpenStack Ceilometer to SSM2 interface
 Name: ceilometer2ssm
 Version: 0.3.3
-Release: 1%{?dist}
+Release: 2%{?dist}
 License: ASL 2.0
 Vendor: CERN, ASGC
 Group: Applications/Internet
@@ -64,6 +64,11 @@ rm -rf $RPM_BUILD_ROOT
 %dir /var/log/ceilodata
 
 %changelog
+
+* Wed Jun 18 2014 Ulrich Schwickerath <Ulrich.Schwickerath@cern.ch> -0.3.3-2
+- fix blanc characters in ssm record creation
+- fix publication of ImageID
+- fix format for start time and end time
 
 * Wed Jun 18 2014 Ulrich Schwickerath <Ulrich.Schwickerath@cern.ch> -0.3.3-1
 - protect against doublication of data in lists
