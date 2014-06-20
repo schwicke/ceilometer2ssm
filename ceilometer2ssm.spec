@@ -65,7 +65,10 @@ rm -rf $RPM_BUILD_ROOT
 
 %changelog
 
-* Wed Jun 18 2014 Ulrich Schwickerath <Ulrich.Schwickerath@cern.ch> -0.3.3-2
+* Fri Jun 20 2014 Ulrich Schwickerath <Ulrich.Schwickerath@cern.ch> -0.3.4-1
+- add sample publishing cron job in doc 
+
+* Thu Jun 19 2014 Ulrich Schwickerath <Ulrich.Schwickerath@cern.ch> -0.3.3-2
 - fix blanc characters in ssm record creation
 - fix publication of ImageID
 - fix format for start time and end time

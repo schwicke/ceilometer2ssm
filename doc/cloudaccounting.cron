@@ -1,1 +1,4 @@
+#
+# This is for the standalone version only ! 
+#
 01 08 * * * root /usr/bin/cloudaccounting -p -v >> /var/log/cloudaccounting.log 2>&1 
