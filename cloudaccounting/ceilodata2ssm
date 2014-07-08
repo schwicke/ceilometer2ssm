@@ -447,7 +447,7 @@ def ssm_input_creation_history(ceilo_data,hide_names):
                 except:
                     pass
                 try:
-                    tmp_net_in_ssm["wall_duration"]==resource_info["wall_duration"]
+                    tmp_net_in_ssm["wall_duration"]=resource_info["wall_duration"]
                 except:
                     pass
                 try:
