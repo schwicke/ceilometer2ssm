@@ -5,10 +5,17 @@ import shlex
 from datetime import datetime, timedelta
 import argparse
 
-parser = argparse.ArgumentParser(description='Publish ceilometer records to APEL using SSM2')
-parser.add_argument('-p', '--publish', dest='publish', action='store_true', help='directly publish the data',default=False)
-parser.add_argument('-v', '--verbose', dest='verbose', action='store_true', help='print the result to the screen',default=False)
-parser.add_argument('-d', '--debug', dest='debug', action='store_true', help='produce debugging output',default=False)
+parser = argparse.ArgumentParser(
+    description='Publish ceilometer records to APEL using SSM2')
+parser.add_argument('-p', '--publish',
+                    dest='publish', action='store_true',
+                    help='directly publish the data', default=False)
+parser.add_argument('-v', '--verbose',
+                    dest='verbose', action='store_true',
+                    help='print the result to the screen', default=False)
+parser.add_argument('-d', '--debug',
+                    dest='debug', action='store_true',
+                    help='produce debugging output', default=False)
 args = parser.parse_args()
 publish = args.publish
 verbose = args.verbose
@@ -18,30 +25,30 @@ yesterday = datetime.now() - timedelta(days=1)
 starttime = yesterday.strftime("%Y-%m-%dT00:00:00")
 endtime = yesterday.strftime("%Y-%m-%dT23:59:59")
 if (verbose):
-    print  "Publication start-time: "+starttime
-    print  "Publication end - time: "+endtime
+    print "Publication start-time: " + starttime
+    print "Publication end - time: " + endtime
 
-addflag=""
+addflag = ""
 if (verbose):
-    addflag=" -v "
+    addflag = " -v "
 if (debug):
-    addflag=" -d "
+    addflag = " -d "
 if (publish):
     addflag += " -p "
 
-command_line  = '/usr/libexec/ceilometer2ssm ' + addflag + ' -s '+starttime+' -e '+endtime
-    
+command_line = '/usr/libexec/ceilometer2ssm ' + addflag +
+' -s ' + starttime + ' -e ' + endtime
+
 if (verbose | debug):
     print "Runnning commmand: " + command_line
 args = shlex.split(command_line)
 try:
     p = subprocess.Popen(args)
     if (p.wait() != 0):
-        print  >> sys.stderr, "ERROR: ceilometer2ssm failed to run properly"
+        print >> sys.stderr, "ERROR: ceilometer2ssm failed to run properly"
         exit(1)
-                    
+
 except:
-    print  >> sys.stderr, command_line
-    print  >> sys.stderr, "ERROR: Failed to run the publication script"
+    print >> sys.stderr, command_line
+    print >> sys.stderr, "ERROR: Failed to run the publication script"
     exit(1)
-        
