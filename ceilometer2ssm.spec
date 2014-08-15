@@ -5,8 +5,8 @@
 %endif
 Summary: OpenStack Ceilometer to SSM2 interface
 Name: ceilometer2ssm
-Version: 0.3.3
-Release: 2%{?dist}
+Version: 0.3.5
+Release: 1%{?dist}
 License: ASL 2.0
 Vendor: CERN, ASGC
 Group: Applications/Internet
@@ -64,6 +64,9 @@ rm -rf $RPM_BUILD_ROOT
 %dir /var/log/ceilodata
 
 %changelog
+
+* Fri Aug 15 2014 Ulrich Schwickerath <Ulrich.Schwickerath@cern.ch> -0.3.5-1
+- add ceilodata2local for local accounting
 
 * Fri Jun 20 2014 Ulrich Schwickerath <Ulrich.Schwickerath@cern.ch> -0.3.4-1
 - add sample publishing cron job in doc 
