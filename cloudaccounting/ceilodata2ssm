@@ -1402,7 +1402,7 @@ def ssm_input_creation_current(resource_data,hide_names):
         except KeyError:
             ssm_info={"cpu":tmp_cpu_ssm,"net_in":tmp_net_in_ssm,"net_out":tmp_net_out_ssm}
         ssm_input_data[resource_id]=ssm_info
-    logging.info("ssm input creation for historical data finished")
+    logging.info("ssm input creation for current data finished")
     return ssm_input_data
 
 def get_ceilo_data_from_database_current():
@@ -1496,13 +1496,16 @@ else:
     ceilo_data=get_ceilo_data_from_database_current()
     ssm_input_data=ssm_input_creation_current(ceilo_data,hide_names)
 
+if (localreport):
+    print "creating local report"
+    reports= report_generation(ssm_input_data,history)
+    print reports
+    logging.info("Local statistics\n %s",reports)
+
 # getting the ssm record
 ssm_output=print_ssm_data(ssm_input_data,sitename,history)
-
 logging.debug("ssm output:\n %s",ssm_output)
-if (localreport):
-    reports= report_generation(ssm_input_data,history)
-    logging.info("Local statistics\n %s",reports)
+
 
 if (publish):
     dirq = QueueSimple('/var/spool/apel/outgoing/')

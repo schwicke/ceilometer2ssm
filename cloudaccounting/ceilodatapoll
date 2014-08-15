@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/python
 import httplib
 import urllib
 import json
@@ -62,7 +62,7 @@ def auth_keystone_v3(keystoneserver, username, password, domain, tenant, token, 
     if (token):
         auth='{"auth":{"scope": {"project": {"id":"'+tenant+'"}},"identity":{"methods":["token"],"token":{"id": "'+token+'"}}}}'
     else:
-        auth='{"auth":{"identity":{"methods":["password"],"password":{"user": {"name": "'+username+'", "password":"'+password+'","domain":{"name":"'+domain+'"}}}}}}'
+        auth='{"auth":{"identity":{"methods":["password"],"password":{"user": {"name": "'+username+'", "password":"'+password+'","domain":{"id":"'+domain+'"}}}}}}'
     auth_server = urlparse.urlparse(keystoneserver)[1]
     auth_protocol = urlparse.urlparse(keystoneserver)[0]
     auth_path = urlparse.urlparse(keystoneserver)[2]
