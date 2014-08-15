@@ -1,4 +1,4 @@
-doc_DATA = README ceilodatastore.sql cloudaccounting.cron ceilodatastore.cron
+doc_DATA = README ceilodatastore.sql cloudaccounting.cron ceilodatastore.cron ceilodata2ssm.cron
 clean:
 	rm -f *.man
 distclean:
