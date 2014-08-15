@@ -67,6 +67,7 @@ rm -rf $RPM_BUILD_ROOT
 
 * Fri Aug 15 2014 Ulrich Schwickerath <Ulrich.Schwickerath@cern.ch> -0.3.5-1
 - add ceilodata2local for local accounting
+- import patches from Bjorn Hagemeier
 
 * Fri Jun 20 2014 Ulrich Schwickerath <Ulrich.Schwickerath@cern.ch> -0.3.4-1
 - add sample publishing cron job in doc 
