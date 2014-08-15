@@ -1,0 +1,908 @@
+#!/usr/bin/python
+import sys
+sys.path.insert(0, '/usr/lib64/python2.6/site-packages/SQLAlchemy-0.7.8-py2.6-linux-x86_64.egg')
+import httplib
+import urllib
+import json
+import cStringIO
+import pycurl
+import re
+import os
+import copy
+from pwd import getpwnam
+from dateutil import parser
+import urlparse
+from dirq.QueueSimple import QueueSimple
+import argparse
+import subprocess
+from itertools import groupby
+import shlex
+from datetime import date, datetime, timedelta
+from calendar import monthrange
+from time import localtime, strftime
+from cloudaccounting import api as db_api
+from collections import defaultdict
+import logging
+from prettytable import PrettyTable
+import json
+mysql_url=""
+start_time=""
+end_time=""
+
+def read_config(filename):
+    # read the mapping of project-id to accounting group from a file
+    try:
+        f = open(filename,"r")
+        try:
+            s=f.read()
+            #print s
+            result=json.loads(s)
+            f.close
+            return result
+        except:
+            print >> sys.stderr, 'ERROR: Cannot parse configuration file ' + filename
+            exit(1)
+    except IOError:
+        print >> sys.stderr, 'ERROR: Cannot open configuration file ' + filename
+        exit(1)
+
+
+# getting the sample volume and sampling time of the first sample
+
+def get_start_sample_info(row_list):
+    result={}
+    try:
+        start_sample_time=row_list[0]["sample_time"]
+        start_sample_value=row_list[0]["counter_volume"]
+        resource_id=row_list[0]["r_id"]
+        for row in row_list:
+            sample_time=row["start_time"]
+            r_id=row["r_id"]
+            sample_value=row["counter_volume"]
+            sample_value=float(sample_value)
+            start_sample_value=float(start_sample_value)
+            if(long(sample_value) < long(start_sample_value)):
+                start_sample_value=sample_value
+                start_sample_time=sample_time
+        result={"start_time":start_sample_time,"start_sample_value":start_sample_value}
+    except:
+        logging.info("Error Ocuured while calculating the start sample value")
+    return result
+
+# getting the sample volume and sampling time of the last sample
+
+def get_end_sample_info(row_list):
+     result={}
+     try:
+        end_sample_time=row_list[0]["end_time"]
+        end_sample_value=row_list[0]["counter_volume"]
+        resource_id=row_list[0]["r_id"]
+        for row in row_list:
+            sample_time=row["end_time"]
+            r_id=row["r_id"]
+            sample_value=row["counter_volume"]
+            sample_value=float(sample_value)
+            end_sample_value=float(end_sample_value)
+            if(long(sample_value) > long(end_sample_value)):
+                end_sample_value=sample_value
+                end_sample_time=sample_time
+
+        result={"end_time":end_sample_time,"end_sample_value":end_sample_value}
+     except:
+        logging.info("Error Ocuured while calculating the end sample value")
+     return result
+
+# getting the ceilometer data stored the database
+
+def get_ceilo_data_from_database(start_time, end_time):
+    logging.info("Contacting the database")
+    logging.info("mysql url is %s ",mysql_url)
+    db_api.create_session(mysql_url) # starts the database session
+    resource_data={}
+    sorted_resource_data={}
+    sorted_metric_data={}
+    resource_data = db_api.get_resource_info() #get the resource data from the data
+    metric_data = db_api.get_metric_info(start_time, end_time) #get the metric data from the database
+    db_api.shutdown_session() # close the database session
+    logging.info("Database communication over")
+    # group the metric data based on resource ids
+    ceilo_data={}
+    tenant_info={}
+    try: 
+        sorted_resource_data=extract_resource_info(resource_data, end_time)
+        metric_data = sorted(metric_data,key=lambda x:x["r_id"])
+        for rid, row_group in groupby(metric_data, lambda x:x["r_id"]):
+            sorted_metric_data[rid] = {}
+            cpu_info = []
+            net_in_info = []
+            net_out_info = []
+            for row in row_group:
+                counter_name=row["counter_name"]
+                if(counter_name=="cpu"):
+                    cpu_info.append(row)
+                elif(counter_name=="network.incoming.bytes"):
+                    net_in_info.append(row)
+                elif(counter_name=="network.outgoing.bytes"):
+                    net_out_info.append(row)
+            sorted_metric_data[rid] = {"cpu_info":cpu_info,"net_in_info":net_in_info,"net_out_info":net_out_info}
+            '''#if rid=="84f51ab5-79a0-45d8-ab8a-88d1ef0f74e3":'''
+    except:
+        logging.info("Error Occured While Sorting the database info")
+    ceilo_data={"resource_data":sorted_resource_data, "metric_data":sorted_metric_data}
+    #print ceilo_data["metric_data"]
+    return ceilo_data
+
+# extract the resource info and group it based on resource ids
+
+def extract_resource_info(resource_data,end_time):
+    sorted_resource_data={}
+    resource_id=""
+    key_not_required =  "_sa_instance_state"
+    for row in resource_data:
+        try:
+            resource_id=str(row["resource_id"]).strip()
+            tmp_resource_info={}
+            tmp_resource_info = row 
+            sorted_resource_data[resource_id]=tmp_resource_info
+        except:
+            logging.info("Error occured while finding the resource id")
+    return sorted_resource_data
+
+# makes the input for the ssm coversion module
+
+def input_creation(ceilo_data, start_time, end_time):
+    input_data=[]
+    sorted_resource_data = ceilo_data["resource_data"]
+    sorted_metric_data = ceilo_data["metric_data"]
+    res_id = 0
+    for resource_id in sorted_metric_data.keys():
+        logging.info("ssm input creation for historical data started")
+        resource_info={}
+        info = {}
+        try:
+            resource_info=sorted_resource_data[resource_id]
+            sorted_item=sorted_metric_data[resource_id]
+            cpu_info=sorted_item["cpu_info"]
+            net_in_info=sorted_item["net_in_info"]
+            net_out_info=sorted_item["net_out_info"]
+            '''if resource_id=="84f51ab5-79a0-45d8-ab8a-88d1ef0f74e3":
+               print net_out_info'''
+            tmp_cpu={}
+            tmp_net_in={}
+            tmp_net_out={}
+            tmp = {}
+            try:
+                tmp["resource_id"]=resource_info["resource_id"]
+            except:
+                pass
+            try:
+                tmp["user_id"]=resource_info["user_id"]
+            except:
+                pass
+            try:
+                tmp["tenant_id"]=resource_info["tenant_id"]
+            except:
+                pass
+            try:
+                tmp["tenant_name"]=resource_info["tenant_name"]
+            except:
+                pass
+            try:
+                group_name="default"
+                try:
+                    tenant_name=resource_info["tenant_name"]
+                    if("-" in tenant_name):
+                        group_name=tenant_name.split("-")[0]
+                    group_name=tenant_name.split()[0]
+                except:
+                    logging.info("Group name is default")
+                tmp["group_name"]=group_name
+            except:
+                pass
+            try:
+                tmp["node"]=resource_info["node"]
+            except:
+                pass
+            try:
+                tmp["hep_spec"]=resource_info["hep_spec"]
+            except:
+                pass
+            try:
+                tmp["host_name"]=resource_info["host_name"]
+            except:
+                pass
+            try:
+                tmp["vmuuid"]=resource_info["vmuuid"]
+            except:
+                pass
+            try:
+                tmp["image_id"]=resource_info["image_ref_url"]
+            except:
+                pass
+            try:
+                tmp["vcpus"]=resource_info["vcpus"]
+            except:
+                pass
+            try:
+                tmp["memory_mb"]=resource_info["memory_mb"]
+            except:
+                pass
+            try:
+                tmp["disk_gb"]=resource_info["disk_gb"]
+            except:
+                pass
+            try:
+                tmp["state"]=resource_info["state"]
+            except:
+                pass
+            try:
+                tmp["deleted"]=resource_info["deleted"]
+            except:
+                pass
+            try:
+                tmp["start_time"]=resource_info["launched_at"]
+            except:
+                pass
+            try:
+                tmp["end_time"]=resource_info["terminated_at"]
+            except:
+                pass
+            if(cpu_info):
+                start_sample_info = {}
+                end_sample_info = {}
+                start_sample_info=get_start_sample_info(cpu_info)
+                end_sample_info=get_end_sample_info(cpu_info)
+                try:
+                    wall_duration=0
+                    terminated_time=resource_info["terminated_at"]
+                    launched_time=resource_info["launched_at"]
+                    if(terminated_time is not None and launched_time is not None):
+                        if launched_time > start_time:
+                            time_start = launched_time
+                        else:
+                            time_start = start_time
+                        if terminated_time > end_time:
+                            time_end = end_time
+                        else:
+                            time_end = terminated_time
+                        diff = time_end - time_start
+                        wall_duration = diff.days * 86400 + diff.seconds
+                    elif launched_time is not None:
+                        if launched_time > start_time:
+                            time_start = launched_time
+                        else:
+                            time_start = start_time
+                        diff = end_time - time_start
+                        wall_duration = diff.days * 86400 + diff.seconds
+                    elif(launched_time is None ):
+                        diff = end_sample_info["end_time"] - start_sample_info["start_time"]
+                        wall_duration = diff.days * 86400 + diff.seconds
+                    logging.info("Launch Time is not available for resource %s" %(resource_id))
+                    tmp_cpu["wall_duration"] = wall_duration
+                except:
+                    print "SOme Error in CPU wall"
+                    tmp_cpu["wall_duration"] = wall_duration
+                    logging.info("Error Occured while calculating wall duration")
+                try:
+                    tmp_cpu["counter_unit"]=cpu_info[0]["counter_unit"]
+                except:
+                    pass
+                try:
+                    tmp_cpu["source"]=cpu_info[0]["source"]
+                except:
+                    pass
+                try:
+                    tmp_cpu["start_counter_volume"]=start_sample_info["start_sample_value"]
+                except:
+                    pass
+                try:
+                    tmp_cpu["start_sample_time"]=start_sample_info["start_time"]
+                except:
+                    pass
+                try:
+                    tmp_cpu["end_counter_volume"]=end_sample_info["end_sample_value"]
+                except:
+                    pass
+                try:
+                    tmp_cpu["end_sample_time"]=end_sample_info["end_time"]
+                except:
+                    pass
+
+            if(net_in_info):
+                start_sample_info = {}
+                end_sample_info = {}
+                start_sample_info=get_start_sample_info(net_in_info)
+                end_sample_info=get_end_sample_info(net_in_info)
+                try:
+                    wall_duration=0
+                    terminated_time=resource_info["terminated_at"]
+                    launched_time=resource_info["launched_at"]
+                    if(terminated_time is not None and launched_time is not None):
+                        if launched_time > start_time:
+                            time_start = launched_time
+                        else:
+                            time_start = start_time
+                        if terminated_time > end_time:
+                            time_end = end_time
+                        else:
+                            time_end = terminated_time
+                        diff = time_end - time_start
+                        wall_duration = diff.days * 86400 + diff.seconds
+                    elif launched_time is not None:
+                        if launched_time > start_time:
+                            time_start = launched_time
+                        else:
+                            time_start = start_time
+                        diff = end_time - time_start
+                        wall_duration = diff.days * 86400 + diff.seconds
+                    elif(launched_time is None):
+                        diff = end_sample_info["end_time"] - start_sample_info["start_time"]
+                        wall_duration = diff.days * 86400 + diff.seconds
+                    logging.info("Launch Time is not available for resource %s" %(resource_id))
+                    tmp_net_in["wall_duration"]=wall_duration
+                except:
+                    print "SOme Error in Net INwall"
+                    logging.info("Error Occured while calculating wall duration")
+                    tmp_net_in["wall_duration"]=wall_duration
+                try:
+                    tmp_net_in["counter_unit"]=net_in_info[0]["counter_unit"]
+                except:
+                    pass
+                try:
+                    tmp_net_in["source"]=net_in_info[0]["source"]
+                except:
+                    pass
+                try:
+                    tmp_net_in["start_counter_volume"]=start_sample_info["start_sample_value"]
+                except:
+                    pass
+                try:
+                    tmp_net_in["start_sample_time"]=start_sample_info["start_time"]
+                except:
+                    pass
+                try:
+                    tmp_net_in["end_counter_volume"]=end_sample_info["end_sample_value"]
+                except:
+                    pass
+                try:
+                    tmp_net_in["end_sample_time"]=end_sample_info["end_time"]
+                except:
+                    pass
+
+            if(net_out_info):
+                start_sample_info = {}
+                end_sample_info = {}
+                start_sample_info = get_start_sample_info(net_out_info)
+                end_sample_info = get_end_sample_info(net_out_info)
+                try:
+                    wall_duration = 0
+                    terminated_time = resource_info["terminated_at"]
+                    launched_time = resource_info["launched_at"]
+                    if(terminated_time is not None and launched_time is not None):
+                        if launched_time > start_time:
+                            time_start = launched_time
+                        else:
+                            time_start = start_time
+                        if terminated_time > end_time:
+                            time_end = end_time
+                        else:
+                            time_end = terminated_time
+                        diff = time_end - time_start
+                        wall_duration = diff.days * 86400 + diff.seconds
+                    elif launched_time is not None:
+                        if launched_time > start_time:
+                            time_start = launched_time
+                        else:
+                            time_start = start_time
+                        diff = end_time - time_start
+                        wall_duration = diff.days * 86400 + diff.seconds
+                    elif(launched_time is None):
+                        diff = end_sample_info["end_time"] - start_sample_info["start_time"]
+                        wall_duration = diff.days * 86400 + diff.seconds
+                    logging.info("Launch Time is not available for resource %s" %(resource_id))
+                    tmp_net_out["wall_duration"]=wall_duration
+                except:
+                        print "Some Error in NET OUT wall"
+                        logging.info("Error Occured while calculating wall duration")
+                        tmp_net_out["wall_duration"]=wall_duration
+                try:
+                    tmp_net_out["counter_unit"] = net_out_info[0]["counter_unit"]
+                except:
+                    pass
+                try:
+                    tmp_net_out["source"]=net_out_info[0]["source"]
+                except:
+                    pass
+                try:
+                    tmp_net_out["start_counter_volume"]=start_sample_info["start_sample_value"]
+                except:
+                    pass
+                try:
+                    tmp_net_out["start_sample_time"]=start_sample_info["start_time"]
+                except:
+                    pass
+                try:
+                    tmp_net_out["end_counter_volume"]=end_sample_info["end_sample_value"]
+                except:
+                    pass
+                try:
+                    tmp_net_out["end_sample_time"]=end_sample_info["end_time"]
+                except:
+                    pass
+        except:
+            logging.info("Possible database corruption detected ! %s",resource_id)
+            print "error---------------"
+        info = {}
+        info = tmp
+        info["cpu"] = tmp_cpu
+        info["net_in"] = tmp_net_in
+        info["net_out"] = tmp_net_out
+        input_data.append(info)
+    logging.info("ssm input creation for historical data finished")
+    return input_data
+
+
+def report_generation_tenant(sorted_metric_info):
+    x = PrettyTable(["Tenant", "VMs", "VCPUs", "Memory(MB)", "Disk Space(GB)", "VM Wall Time(s)", "CPU Wall Time(s)", "Avg. CPU Usage", "Net In(GB)", "Net Out(GB)", "Cores * CPU Time", "Cores * Wall Time"])
+
+    x.align["Accounting Group"] = "l" # Left align city names
+    x.padding_width = 1 # One space between column edges and contents (default)
+    y=PrettyTable(["Accounting Group", "Tenant List"])
+    y.align["Accounting Group"] = "l" # Left align city names
+    y.padding_width = 1 # One space between column edges and contents (default)
+    by_accgroup = {}
+    by_tenant = {}
+    counter=0
+    error_message=""
+    sort_tenant_wise = sorted(sorted_metric_info, key=lambda x:x["tenant_name"])
+    tenant_wise = {}
+    for tenant, row_list in groupby(sort_tenant_wise, lambda x:x["tenant_name"]):
+        tenant_wise[tenant] = {}
+        no_of_vms = 0
+        no_of_vcpus = 0
+        total_wall_time = 0
+        memory_mb = 0
+        disk_gb = 0
+        cpu_count_start = 0
+        cpu_count_end = 0
+        total_cores_x_cpu_wall_time = 0
+        total_cpu_wall_time = 0
+        total_cores_x_wall_time = 0
+        total_avg_usage_per_core = 0
+        total_net_in_count = 0
+        total_net_out_count = 0
+        tenant_dict = {}
+        tenantcount = 0
+        for row in row_list:
+            res_id = row["resource_id"]
+            cpu_info = row["cpu"]
+            net_in_info = row["net_in"]
+            net_out_info = row["net_out"]
+            start_counter_volume = 0
+            end_counter_volume = 0
+            vm_wall_time_list = []
+            try:
+                tenant_name = row["tenant_name"]
+                tenant_id = row["tenant_id"]
+            except:
+                pass
+
+            if tenant_name not in  tenant_dict.keys():
+                tenant_dict[tenant_name] = {}
+                tenantcount += 1
+
+            try:
+                vcpus = int(row["vcpus"])
+            except:
+                vcpus = 0
+
+            try:
+                memory = int(row["memory_mb"])
+            except:
+                memory = 0
+
+            try:
+                disk = int(row["disk_gb"])
+            except:
+                disk = 0
+
+            vm_wall_time_cpu = 0
+            if cpu_info:
+                try:
+                    vm_wall_time_cpu = cpu_info["wall_duration"]
+                    vm_wall_time_list.append(vm_wall_time_cpu)
+                except:
+                    vm_wall_time_list.append(vm_wall_time_cpu)
+
+            vm_wall_time_netin = 0
+            if  net_in_info:
+                try:
+                    vm_wall_time_netin = net_in_info["wall_duration"]
+                    vm_wall_time_list.append(vm_wall_time_netin)
+                except:
+                    vm_wall_time_list.append(vm_wall_time_netin)
+
+            vm_wall_time_netout = 0
+            if  net_out_info:
+                try:
+                    vm_wall_time_netout = net_out_info["wall_duration"]
+                    vm_wall_time_list.append(vm_wall_time_netout)
+                except:
+                    vm_wall_time_list.append(vm_wall_time_netout)
+
+            vm_wall_time = max(vm_wall_time_cpu,vm_wall_time_netin, vm_wall_time_netout)
+
+            if vcpus is not None and vcpus >0:
+                no_of_vms += 1
+                no_of_vcpus += vcpus
+                memory_mb += memory
+                disk_gb += disk
+                total_wall_time += vm_wall_time
+                total_cores_x_wall_time += (vcpus * vm_wall_time)
+
+            if(cpu_info):
+                try:
+                    start_counter_volume = long(cpu_info['start_counter_volume'])
+                except:
+                    pass
+
+                cpu_count_start = start_counter_volume
+                try:
+                    end_counter_volume = long(cpu_info['end_counter_volume'])
+                except:
+                    end_counter_volume=0
+                cpu_count_end = end_counter_volume
+
+                cpu_wall_time = 0
+                cpu_wall_time =  float(end_counter_volume - start_counter_volume) / 1000000000.0
+
+                total_cores_x_cpu_wall_time += (no_of_vcpus * cpu_wall_time)
+                total_cpu_wall_time += cpu_wall_time
+
+                #usage_per_core = 0 # in seconds
+                avg_usage_per_core = 0
+                try:
+                    cpu_wall_time_per_core = float(cpu_wall_time) / float(no_of_vcpus)
+                    avg_usage_per_core = (cpu_wall_time_per_core / float(vm_wall_time))
+                except:
+                    avg_usage_per_core = 0
+
+                total_avg_usage_per_core += avg_usage_per_core
+
+            if(net_in_info):
+                counter_volume_start = 0
+                try:
+                    counter_volume_start = float(net_in_info['start_counter_volume']) / 1073741824.0
+                except:
+                    pass
+                counter_volume_end = 0
+                try:
+                    counter_volume_end = float(net_in_info['end_counter_volume'])/ 1073741824.0
+                except:
+                    counter_volume_end = 0
+                total_net_in_count += long(counter_volume_end - counter_volume_start)
+            if(net_out_info):
+                counter_volume_start = 0
+                try:
+                    counter_volume_start = float(net_out_info['start_counter_volume']) / 1073741824.0
+                except:
+                    counter_volume_start = 0
+
+                counter_volume_end = 0
+                try:
+                    counter_volume_end = float(net_out_info['end_counter_volume']) / 1073741824.0
+                except:
+                    counter_volume_end = 0
+                total_net_out_count += long(counter_volume_end - counter_volume_start)
+        total_avg_usage_per_core = total_avg_usage_per_core /float(no_of_vcpus)
+        tenant_wise[tenant]['no_of_tenants'] = tenantcount
+        tenant_wise[tenant]['no_of_vms'] = no_of_vms
+        tenant_wise[tenant]['no_of_vcpus'] = no_of_vcpus
+        tenant_wise[tenant]['memory_mb'] = memory_mb
+        tenant_wise[tenant]['disk_gb'] = disk_gb
+        tenant_wise[tenant]['total_wall_time'] = total_wall_time
+        tenant_wise[tenant]['total_cpu_wall_time'] = total_cpu_wall_time
+        tenant_wise[tenant]['total_cores_x_cpu_wall_time'] = total_cores_x_cpu_wall_time
+        tenant_wise[tenant]['total_avg_usage_per_core'] = total_avg_usage_per_core
+        tenant_wise[tenant]['total_net_in_gb'] = total_net_in_count
+        tenant_wise[tenant]['total_net_out_gb'] = total_net_out_count
+        tenant_wise[tenant]['total_cores_x_wall_time'] = total_cores_x_wall_time
+        x.add_row([tenant, no_of_vms, no_of_vcpus, memory_mb, disk_gb, total_wall_time, total_cpu_wall_time, "{0:.6f}".format(tenant_wise[tenant]['total_avg_usage_per_core']), \
+total_net_in_count, total_net_out_count, total_cores_x_cpu_wall_time, total_cores_x_wall_time])
+    jsonx = json.dumps(tenant_wise, sort_keys=True,indent=4, separators=(',', ': '))
+    return jsonx, x
+
+
+def report_generation_vo(sorted_metric_info):
+    x = PrettyTable(["VO", "Tenants","VMs", "VCPUs", "Memory(MB)", "Disk Space(GB)", "VM Wall Time(s)", "CPU Wall Time(s)", "Avg. CPU Usage", "Net In(GB)", "Net Out(GB)", "Cores * CPU Time", "Cores * Wall Time"])
+    
+    x.align["Accounting Group"] = "l" # Left align city names
+    x.padding_width = 1 # One space between column edges and contents (default)
+    y=PrettyTable(["Accounting Group", "Tenant List"])
+    y.align["Accounting Group"] = "l" # Left align city names
+    y.padding_width = 1 # One space between column edges and contents (default)
+    by_accgroup = {}
+    by_tenant = {}
+    counter=0
+    error_message=""
+    sort_vo_wise = sorted(sorted_metric_info, key=lambda x:x["group_name"])
+    #sort_tenant_wise = sorted(sorted_metric_info, key=lambda x:x["tenant_name"])
+    vo_wise = {}
+    #print sort_vo_wise
+    #print sort_tenant_wise
+    #for vo, row_list in groupby(sort_tenant_wise, lambda x:x["tenant_name"]):
+    for vo, row_list in groupby(sort_vo_wise, lambda x:x["group_name"]):
+        vo_wise[vo] = {}
+        no_of_vms = 0
+        no_of_vcpus = 0
+        total_wall_time = 0
+        memory_mb = 0
+        disk_gb = 0
+        cpu_count_start = 0
+        cpu_count_end = 0
+        total_cores_x_cpu_wall_time = 0
+        total_cpu_wall_time = 0
+        total_cores_x_wall_time = 0 
+        total_avg_usage_per_core = 0
+        total_net_in_count = 0
+        total_net_out_count = 0
+        tenant_dict = {}
+        tenantcount = 0
+        print vo
+        for row in row_list:
+            res_id = row["resource_id"]
+            cpu_info = row["cpu"]
+            net_in_info = row["net_in"]
+            net_out_info = row["net_out"]
+            start_counter_volume = 0
+            end_counter_volume = 0
+            vm_wall_time_list = []
+            try:
+                tenant_name = row["tenant_name"]
+                tenant_id = row["tenant_id"]
+            except:
+                pass
+
+            if tenant_name not in  tenant_dict.keys():
+                tenant_dict[tenant_name] = {}
+                tenantcount += 1
+
+            try:
+                vcpus = int(row["vcpus"])
+            except:
+                vcpus = 0
+            
+            try:
+                memory = int(row["memory_mb"])
+            except:
+                memory = 0
+
+            try:
+                disk = int(row["disk_gb"])
+            except:
+                disk = 0
+            
+            vm_wall_time_cpu = 0
+            if cpu_info:
+                try:
+                    vm_wall_time_cpu = cpu_info["wall_duration"]
+                    vm_wall_time_list.append(vm_wall_time_cpu)
+                except:
+                    vm_wall_time_list.append(vm_wall_time_cpu)
+
+            vm_wall_time_netin = 0
+            if  net_in_info:
+                try:
+                    vm_wall_time_netin = net_in_info["wall_duration"]
+                    vm_wall_time_list.append(vm_wall_time_netin)
+                except:
+                    vm_wall_time_list.append(vm_wall_time_netin)
+
+            vm_wall_time_netout = 0
+            if  net_out_info:
+                try:
+                    vm_wall_time_netout = net_out_info["wall_duration"]
+                    vm_wall_time_list.append(vm_wall_time_netout)
+                except:
+                    vm_wall_time_list.append(vm_wall_time_netout)
+
+            vm_wall_time = max(vm_wall_time_cpu,vm_wall_time_netin, vm_wall_time_netout)
+
+            if vcpus is not None and vcpus >0:
+                no_of_vms += 1
+                no_of_vcpus += vcpus
+                memory_mb += memory
+                disk_gb += disk
+                total_wall_time += vm_wall_time
+                total_cores_x_wall_time += (vcpus * vm_wall_time)
+
+            if(cpu_info):
+                try:
+                    start_counter_volume = long(cpu_info['start_counter_volume'])
+                except:
+                    pass
+            
+                cpu_count_start = start_counter_volume
+                try:
+                    end_counter_volume = long(cpu_info['end_counter_volume'])
+                except:
+                    end_counter_volume=0
+                cpu_count_end = end_counter_volume
+            
+                cpu_wall_time = 0
+                cpu_wall_time =  float(end_counter_volume - start_counter_volume) / 1000000000.0
+                  
+                total_cores_x_cpu_wall_time += (no_of_vcpus * cpu_wall_time)
+                total_cpu_wall_time += cpu_wall_time
+
+                #usage_per_core = 0 # in seconds
+                avg_usage_per_core = 0
+                try:
+                    cpu_wall_time_per_core = float(cpu_wall_time) / float(no_of_vcpus)
+                    avg_usage_per_core = (cpu_wall_time_per_core / float(vm_wall_time))
+                except:
+                    avg_usage_per_core = 0
+
+                total_avg_usage_per_core += avg_usage_per_core
+ 
+            if(net_in_info):
+                counter_volume_start = 0
+                try:
+                    counter_volume_start = float(net_in_info['start_counter_volume']) / 1073741824.0
+                except:
+                    pass
+                
+                counter_volume_end = 0
+                try:
+                    counter_volume_end = float(net_in_info['end_counter_volume'])/ 1073741824.0
+                except:
+                    counter_volume_end = 0
+                total_net_in_count += (counter_volume_end - counter_volume_start)
+            if(net_out_info):
+                counter_volume_start = 0
+                try:
+                    counter_volume_start = float(net_out_info['start_counter_volume']) / 1073741824.0
+                except:
+                    counter_volume_start = 0
+                
+                counter_volume_end = 0
+                try:
+                    counter_volume_end = float(net_out_info['end_counter_volume']) / 1073741824.0
+                except:
+                    counter_volume_end = 0
+                total_net_out_count += (counter_volume_end - counter_volume_start)
+
+        vo_wise[vo]['no_of_tenants'] = tenantcount
+        vo_wise[vo]['no_of_vms'] = no_of_vms
+        vo_wise[vo]['no_of_vcpus'] = no_of_vcpus
+        vo_wise[vo]['memory_mb'] = memory_mb
+        vo_wise[vo]['disk_gb'] = disk_gb
+        vo_wise[vo]['total_wall_time'] = total_wall_time
+        vo_wise[vo]['total_cpu_wall_time'] = total_cpu_wall_time
+        vo_wise[vo]['total_cores_x_cpu_wall_time'] = total_cores_x_cpu_wall_time
+        vo_wise[vo]['total_avg_usage_per_core'] = float(total_avg_usage_per_core) / float(no_of_vcpus)
+        vo_wise[vo]['total_net_in_count'] = long(total_net_in_count)
+        vo_wise[vo]['total_net_out_count'] = long(total_net_out_count)
+        vo_wise[vo]['total_cores_x_wall_time'] = total_cores_x_wall_time
+        x.add_row([vo, tenantcount, no_of_vms, no_of_vcpus, memory_mb, disk_gb, total_wall_time, total_cpu_wall_time, "{0:.6f}".format(vo_wise[vo]['total_avg_usage_per_core']), \
+total_net_in_count, total_net_out_count, total_cores_x_cpu_wall_time, total_cores_x_wall_time])
+    #print x
+    jsonx = json.dumps(vo_wise, sort_keys=True,indent=4, separators=(',', ': '))
+    return jsonx, x
+
+aparser = argparse.ArgumentParser(description='Publish ceilometer records to APEL using SSM2')
+group1 = aparser.add_mutually_exclusive_group()
+group1.add_argument('-s', '--start', dest='start', action='store',help='start time in format "yyyy-mm-dd"',default=False)
+group1.add_argument('-m', '--month', dest='month', type=int, choices=[1,2,3,4,5,6,7,8,9,10,11,12],action='store',help='month for which report has to be generated, e.g 5 for May',default=False)
+aparser.add_argument('-e', '--end', dest='end', action='store', help='end time for in format "yyyy-mm-dd"',default=False)
+aparser.add_argument('-v', '--verbose', dest="loglevel",action='store_const', help='be verbose',const=logging.INFO)
+aparser.add_argument('-j', '--json', dest='json', action='store_true', help='print results in json',default=False)
+aparser.add_argument('-w', '--wise', dest='wise', action='store', help='print results "vo" wise or "tenant" wise\n For vo wise give -w vo and for tenant wise give -w tenant',default="vo")
+aparser.add_argument('-d', '--debug', dest='loglevel', action='store_const', help='produce debugging output',const=logging.DEBUG,default=logging.WARNING)
+aparser.add_argument('-c', '--config', dest='configfile', action='store', help='ceilometer2ssm configuration file location',default="/etc/ceilodata.conf")
+aparser.add_argument('-l', '--logfile', dest='logfile', action='store', help='ceilometer2ssm log file location',default="/var/log/ceilodata/ceilodata2acct_monthly.log")
+
+args = aparser.parse_args()
+logfile = args.logfile
+configfile = args.configfile
+jsonize = args.json
+wise = args.wise
+logging.basicConfig(filename=logfile,level=args.loglevel)
+month=args.month
+
+today=date.today()
+current_month=int(today.month)
+
+#print month
+if args.start and args.end:
+    #try:
+    start_time_obj = datetime.strptime(str(args.start), "%Y-%m-%d")
+    start_time = start_time_obj.strftime("%Y-%m-%d 00:00:00")
+    end_time_obj = datetime.strptime(str(args.end), "%Y-%m-%d")
+    end_time = end_time_obj.strftime("%Y-%m-%d 23:59:59")
+    #except:
+    #   print "error in date in input date format"
+
+if (args.start and not args.end) or (not args.start and args.end) :
+    if not args.start:
+        print "Please provide start date."
+        logging.info("Please provide start date.")
+    if not args.end:
+        logging.info("Please provide end date.")
+        print "Please provide end date."
+
+if not args.start and not args.end:
+    if not month:
+        month = current_month     
+    else:
+        month=int(month)  
+    
+    start_time_obj = datetime(int(today.year), month, 1, 0, 0, 0)
+    start_time = start_time_obj.strftime("%Y-%m-%d %H:%M:%S")
+    month_last_day =  int(monthrange(today.year, month)[1])
+    end_time_obj = datetime(today.year, month, month_last_day, 23, 59, 59)
+    end_time = end_time_obj.strftime("%Y-%m-%d %H:%M:%S")
+
+logging.info("start time: %s",start_time)
+logging.info("end time: %s",end_time)
+logging.info("month: %s",month)
+
+# read mapping from file
+config = read_config(configfile)
+#mapping = config["mapping"]
+    
+# database info
+try:
+    database_info=config["database"]
+    try:
+        mysql_user_name=database_info["user"]
+        mysql_password=database_info["password"]
+        database_name=database_info["database_name"]
+        mysql_url="mysql://"+mysql_user_name+":"+mysql_password+"@localhost:3306/"+database_name
+    except:
+        print >> sys.stderr, "ERROR: My sql user name and password has not been properly set"
+        logging.error("ERROR: My sql user name and password has not been properly set")
+
+except:
+    print >> sys.stderr, "ERROR: No database info in the file"
+    logging.error("ERROR: No database info in the file")
+
+try:
+    config_parameters = config["config_parameters"]
+except:
+    if (verbose):
+        print >> sys.stderr, "ERROR: No configuration parametes defined in the configuration file"
+        logging.error("ERROR: No configuration parametes defined in the configuration file")
+try:
+    error_file=config_parameters["reports_error_file"]
+except KeyError:
+    print >> sys.stderr, "ERROR: Error file is not set"
+    logging.error("ERROR: Error file is not set")
+    sys.exit(1)
+
+#ceilo_data={}
+#input_data={}
+start_time_obj =  datetime.strptime(start_time, "%Y-%m-%d %H:%M:%S")
+end_time_obj = datetime.strptime(end_time, "%Y-%m-%d %H:%M:%S")
+logging.debug("Polling the ceilometer data from database")
+ceilo_data=get_ceilo_data_from_database(start_time_obj,end_time_obj)
+input_data=input_creation(ceilo_data, start_time_obj, end_time_obj)
+#print input_data
+if wise == "vo":
+    jsonx, reports = report_generation_vo(input_data)
+    if jsonize:
+        print jsonx
+    else:
+        print reports
+elif wise =="tenant":
+    jsonx, reports = report_generation_tenant(input_data)
+    if jsonize:
+        print jsonx
+    else:
+        print reports
+else:
+    print "Invalid value for wise option.\n Use -w vo or -w tenant"
+#logging.info("Local statistics\n %s",reports)
+
+
+
