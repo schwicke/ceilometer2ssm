@@ -59,9 +59,7 @@ def get_start_sample_info(row_list):
             sample_time=row["start_time"]
             r_id=row["r_id"]
             sample_value=row["counter_volume"]
-            sample_value=float(sample_value)
-            start_sample_value=float(start_sample_value)
-            if(long(sample_value) < long(start_sample_value)):
+            if(sample_value < start_sample_value):
                 start_sample_value=sample_value
                 start_sample_time=sample_time
         result={"start_time":start_sample_time,"start_sample_value":start_sample_value}
@@ -81,9 +79,7 @@ def get_end_sample_info(row_list):
             sample_time=row["end_time"]
             r_id=row["r_id"]
             sample_value=row["counter_volume"]
-            sample_value=float(sample_value)
-            end_sample_value=float(end_sample_value)
-            if(long(sample_value) > long(end_sample_value)):
+            if(sample_value > end_sample_value):
                 end_sample_value=sample_value
                 end_sample_time=sample_time
 

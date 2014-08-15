@@ -14,6 +14,7 @@ import urlparse
 from dirq.QueueSimple import QueueSimple
 import argparse
 import subprocess
+from itertools import groupby
 import shlex
 from datetime import date,datetime, timedelta
 from time import localtime, strftime
@@ -70,17 +71,14 @@ def read_config(filename):
 def get_start_sample_info(row_list):
     result={}
     try:
-        start_sample_time=row_list[0]["sample_time"].strftime("%s");
-        start_sample_value=row_list[0]["counter_volume"];
+        start_sample_time=row_list[0]["sample_time"]
+        start_sample_value=row_list[0]["counter_volume"]
         resource_id=row_list[0]["r_id"]
         for row in row_list:
-            sample_time=row["sample_time"]
+            sample_time=row["start_time"]
             r_id=row["r_id"]
-            sample_time=sample_time.strftime("%s");
             sample_value=row["counter_volume"]
-            sample_value=float(sample_value)
-            start_sample_value=float(start_sample_value)
-            if(long(sample_value) < long(start_sample_value)):
+            if(sample_value < start_sample_value):
                 start_sample_value=sample_value
                 start_sample_time=sample_time
         result={"start_time":start_sample_time,"start_sample_value":start_sample_value}
@@ -93,17 +91,14 @@ def get_start_sample_info(row_list):
 def get_end_sample_info(row_list):
      result={}
      try:
-        end_sample_time=row_list[0]["sample_time"].strftime("%s");
-        end_sample_value=row_list[0]["counter_volume"];
+        end_sample_time=row_list[0]["end_time"]
+        end_sample_value=row_list[0]["counter_volume"]
         resource_id=row_list[0]["r_id"]
         for row in row_list:
-            sample_time=row["sample_time"]
-            sample_time=sample_time.strftime("%s");
+            sample_time=row["end_time"]
             r_id=row["r_id"]
             sample_value=row["counter_volume"]
-            sample_value=float(sample_value)
-            end_sample_value=float(end_sample_value)
-            if(long(sample_value) > long(end_sample_value)):
+            if(sample_value > end_sample_value):
                 end_sample_value=sample_value
                 end_sample_time=sample_time
         result={"end_time":end_sample_time,"end_sample_value":end_sample_value}
@@ -130,24 +125,24 @@ def get_ceilo_data_from_database_history(start_time,end_time):
     tenant_info={}
     sorted_resource_data={}
     sorted_metric_data={}
-    try:
-        sorted_resource_data=extract_resource_info(resource_data,end_time)
-        for row in metric_data:
-            id=row["r_id"]
-            cpu_info=[]
-            net_in_info=[]
-            net_out_info=[]
-            for tmp_row in metric_data:
-                tmp_id=tmp_row["r_id"]
-                if(id==tmp_id):
-                    counter_name=tmp_row["counter_name"]
-                    if(counter_name=="cpu"):
-                        cpu_info.append(tmp_row)
-                    elif(counter_name=="network.incoming.bytes"):
-                        net_in_info.append(tmp_row)
-                    elif(counter_name=="network.outgoing.bytes"):
-                        net_out_info.append(tmp_row)
-            sorted_metric_data[id]={"cpu_info":cpu_info,"net_in_info":net_in_info,"net_out_info":net_out_info}
+    try: 
+        sorted_resource_data=extract_resource_info(resource_data, end_time)
+        metric_data = sorted(metric_data,key=lambda x:x["r_id"])
+        for rid, row_group in groupby(metric_data, lambda x:x["r_id"]):
+            sorted_metric_data[rid] = {}
+            cpu_info = []
+            net_in_info = []
+            net_out_info = []
+            for row in row_group:
+                counter_name=row["counter_name"]
+                if(counter_name=="cpu"):
+                    cpu_info.append(row)
+                elif(counter_name=="network.incoming.bytes"):
+                    net_in_info.append(row)
+                elif(counter_name=="network.outgoing.bytes"):
+                    net_out_info.append(row)
+            sorted_metric_data[rid] = {"cpu_info":cpu_info,"net_in_info":net_in_info,"net_out_info":net_out_info}
+            '''#if rid=="84f51ab5-79a0-45d8-ab8a-88d1ef0f74e3":'''
     except:
         logging.info("Error Occured While Sorting the database info")
     ceilo_data={"resource_data":sorted_resource_data,"metric_data":sorted_metric_data}
@@ -1497,7 +1492,6 @@ else:
     ssm_input_data=ssm_input_creation_current(ceilo_data,hide_names)
 
 if (localreport):
-    print "creating local report"
     reports= report_generation(ssm_input_data,history)
     print reports
     logging.info("Local statistics\n %s",reports)
