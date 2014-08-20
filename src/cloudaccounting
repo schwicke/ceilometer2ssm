@@ -36,8 +36,8 @@ if (debug):
 if (publish):
     addflag += " -p "
 
-command_line = '/usr/libexec/ceilometer2ssm ' + addflag +
-' -s ' + starttime + ' -e ' + endtime
+command_line = '/usr/libexec/ceilometer2ssm %s -s %s -e %s' % (
+    addflag, starttime, endtime)
 
 if (verbose | debug):
     print "Runnning commmand: " + command_line
