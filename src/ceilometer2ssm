@@ -102,40 +102,40 @@ def receive_data(keystone_response, start, end, meter):
                     NEWconn = httplib.HTTPSConnection
                 else:
                     NEWconn = httplib.HTTPConnection
-                    query = {'q': [{'field': 'timestamp',
-                                    'op': 'ge',
-                                    'value': start},
-                                   {'field': 'timestamp',
-                                    'op': 'le',
-                                    'value': end}
-                                   ]
-                             }
-                    data = json.dumps(query)
-                    header = {'Content-type': 'application/json',
-                              'X-Auth-Token': tokenid.encode('ascii', 'ignore')
-                              }
-                    req = 'GET'
+                query = {'q': [{'field': 'timestamp',
+                                'op': 'ge',
+                                'value': start},
+                               {'field': 'timestamp',
+                                'op': 'le',
+                                'value': end}
+                               ]
+                         }
+                data = json.dumps(query)
+                header = {'Content-type': 'application/json',
+                          'X-Auth-Token': tokenid.encode('ascii', 'ignore')
+                          }
+                req = 'GET'
 
-                    logging.debug(
-                        "Query ceilometer server at: %s" % ceilometer_server)
-                    logging.debug("Query it with: :%s" %
-                                  json.dumps(query, indent=2))
+                logging.debug(
+                    "Query ceilometer server at: %s" % ceilometer_server)
+                logging.debug("Query it with: :%s" %
+                              json.dumps(query, indent=2))
 
+                try:
+                    get_cm_conn = NEWconn(ceilometer_server)
                     try:
-                        get_cm_conn = NEWconn(ceilometer_server)
-                        try:
-                            get_cm_conn.request(
-                                req, uri, body=data, headers=header)
-                            res = get_cm_conn.getresponse()
-                            if res.status == 200:
-                                return json.loads(res.read())
-                        except:
-                            logging.error(
-                                "Failed to query ceilometer server at %s" %
-                                ceilometers)
-                            sys.exit(1)
+                        get_cm_conn.request(
+                            req, uri, body=data, headers=header)
+                        res = get_cm_conn.getresponse()
+                        if res.status == 200:
+                            return json.loads(res.read())
                     except:
-                        logging.error('failed to create the connection object')
+                        logging.error(
+                            "Failed to query ceilometer server at %s" %
+                            ceilometers)
+                        sys.exit(1)
+                except:
+                    logging.error('failed to create the connection object')
 
 
 def get_uid(username):
