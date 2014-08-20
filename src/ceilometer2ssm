@@ -58,8 +58,9 @@ def read_config(filename):
 
 
 def auth_keystone(keystoneserver, username, password, tenant, cacert):
-    auth = '{"auth":{"passwordCredentials":{"username":"%s", "password":"%s"},'
-    '"tenantName":"%s"}}' % (username, password, tenant)
+    auth = ('{"auth":{"passwordCredentials":{"username":"%s",'
+            '"password":"%s"}, "tenantName":"%s"}}') % (
+        username, password, tenant)
     auth_server = urlparse.urlparse(keystoneserver)[1]
     auth_protocol = urlparse.urlparse(keystoneserver)[0]
     auth_path = urlparse.urlparse(keystoneserver)[2]
@@ -330,8 +331,8 @@ def print_ssm_records(ssm, sitename):
     line = "APEL-cloud-message: %s\n" % "v0.2"
     for resource_id in ssm.keys():
         if ssm[resource_id]:
-            if 'periodstart' in ssm[resource_id] and
-            'periodend' in ssm[resource_id]:
+            if ('periodstart' in ssm[resource_id] and
+                    'periodend' in ssm[resource_id]):
                 logging.info("reported period: from %s to %s" % (
                     ssm[resource_id]['periodstart'],
                     ssm[resource_id]['periodend']))
@@ -455,15 +456,15 @@ def create_report(ssm):
                                 ['counter_value'] / 1073741824.0)
 
     for accgroup in by_accgroup.keys():
-        report += "| %s | %s | %s | %s | %s | %s | %s | %s |\n" %
-        (accgroup,
-         str(by_accgroup[accgroup]['nvms']),
-         str(by_accgroup[accgroup]['ncores']),
-         str(by_accgroup[accgroup]['disk']),
-         str(by_accgroup[accgroup]['cpucount']),
-         str(by_accgroup[accgroup]['memory']),
-         str(by_accgroup[accgroup]['net_in']),
-         str(by_accgroup[accgroup]['net_out']))
+        report += "| %s | %s | %s | %s | %s | %s | %s | %s |\n" % (
+            accgroup,
+            str(by_accgroup[accgroup]['nvms']),
+            str(by_accgroup[accgroup]['ncores']),
+            str(by_accgroup[accgroup]['disk']),
+            str(by_accgroup[accgroup]['cpucount']),
+            str(by_accgroup[accgroup]['memory']),
+            str(by_accgroup[accgroup]['net_in']),
+            str(by_accgroup[accgroup]['net_out']))
     return report
 
 
@@ -680,7 +681,7 @@ if __name__ == '__main__':
     try:
         (os_auth_url, os_username, os_password, os_tenant_name,
          os_cacert) = read_data_from_secrets(config)
-    except Error, e:
+    except Exception, e:
         logging.error(e)
         sys.exit(1)
 
