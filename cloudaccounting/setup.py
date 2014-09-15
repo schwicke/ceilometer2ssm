@@ -16,7 +16,7 @@ setup(
     license = "ASL2",
     keywords = "ceilometer2ssm",
     url = "https://github.com/schwicke/ceilometer2ssm",
-    packages=['cloudaccounting','caapi','caapi/app','caapi/app/scripts'],
+    packages=['cloudaccounting','caapi','caapi/app','caapi/scripts'],
     scripts=['ceilometer2ssm','ceilodatastore','ceilodatapoll','ceilodata2ssm','ceilodata2acct','standalone/cloudaccounting'],
     classifiers=[
         "Development Status :: 3 - Alpha",

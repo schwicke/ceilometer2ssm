@@ -22,6 +22,7 @@ import time
 from cloudaccounting import landbquery # queries landb datbase
 from cloudaccounting import hwdbquery  # queries hwdb database
 import argparse
+from caapi.scripts.popopulate_daily_resource_record import update_resource_record
 
 hep_spec_data={} # stores the serial number-hep_spec mappings
 
@@ -781,3 +782,8 @@ for tmp_list in time_list:
     sorted_resource_data=get_sorted_resource_data(ceilo_data_per_tenant)
     store_sorted_resource_data(sorted_resource_data,start_time,end_time,lgr)
     lgr.debug('Done with database update')
+
+#Now update daily_resouce_record table from metric_data table
+lgr.debug('Update daily_resouce_record starts')
+update_resource_record()
+lgr.debug('Update daily_resouce_record ends')

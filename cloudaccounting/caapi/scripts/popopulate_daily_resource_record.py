@@ -28,8 +28,8 @@ DBSession = sessionmaker(bind=engine)
 session = DBSession()
  
 # Insert a Person in the person table
-def update(day):
-    today=date.today() - timedelta(day - 1)
+def update_resource_record():
+    today=date.today() - timedelta(1)
     starttime = today.strftime("%Y-%m-%d") + " 00:00:00"
     endtime = today.strftime("%Y-%m-%d") + " 23:59:59"
     print starttime 
@@ -80,7 +80,4 @@ def update(day):
         session.add(new_row)
     session.commit()
  
-for day in range(5, 1, -1):
-    update(day)
-
 #session.remove()
