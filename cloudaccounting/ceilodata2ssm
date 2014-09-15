@@ -358,11 +358,11 @@ def ssm_input_creation_history(ceilo_data,hide_names):
                 except:
                     pass
                 try:
-                    tmp_cpu_ssm["counter_unit"]=cpu_info["counter_unit"]
+                    tmp_cpu_ssm["counter_unit"]=cpu_info[0]["counter_unit"]
                 except:
                     pass
                 try:
-                    tmp_cpu_ssm["source"]=cpu_info["source"]
+                    tmp_cpu_ssm["source"]=cpu_info[0]["source"]
                 except:
                     pass
                 try:
@@ -454,11 +454,11 @@ def ssm_input_creation_history(ceilo_data,hide_names):
                 except:
                     pass
                 try:
-                    tmp_net_in_ssm["counter_unit"]=net_in_info["counter_unit"]
+                    tmp_net_in_ssm["counter_unit"]=net_in_info[0]["counter_unit"]
                 except:
                     pass
                 try:
-                    tmp_net_in_ssm["source"]=net_in_info["source"]
+                    tmp_net_in_ssm["source"]=net_in_info[0]["source"]
                 except:
                     pass
                 try:
@@ -550,11 +550,11 @@ def ssm_input_creation_history(ceilo_data,hide_names):
                 except:
                     pass
                 try:
-                    tmp_net_out_ssm["counter_unit"]=net_in_info["counter_unit"]
+                    tmp_net_out_ssm["counter_unit"]=net_in_info[0]["counter_unit"]
                 except:
                     pass
                 try:
-                    tmp_net_out_ssm["source"]=net_in_info["source"]
+                    tmp_net_out_ssm["source"]=net_in_info[0]["source"]
                 except:
                     pass
                 try:

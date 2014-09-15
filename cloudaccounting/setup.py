@@ -11,13 +11,13 @@ def read(fname):
 setup(
     name = "ceilossm",
     version = "0.0.1",
-    author = "Sajeesh Cimson Sasi, Ulrich Schwickerath",
+    author = "Sajeesh Cimson Sasi, Nirbhay Chandorkar, Ulrich Schwickerath",
     description = ("Tools for WLCG cloud accounting "),
     license = "ASL2",
     keywords = "ceilometer2ssm",
     url = "https://github.com/schwicke/ceilometer2ssm",
-    packages=['cloudaccounting'],
-    scripts=['ceilometer2ssm','ceilodatastore','ceilodatapoll','ceilodata2ssm','standalone/cloudaccounting'],
+    packages=['cloudaccounting','caapi','caapi/app','caapi/app/scripts'],
+    scripts=['ceilometer2ssm','ceilodatastore','ceilodatapoll','ceilodata2ssm','ceilodata2acct','standalone/cloudaccounting'],
     classifiers=[
         "Development Status :: 3 - Alpha",
         "Topic :: Utilities",

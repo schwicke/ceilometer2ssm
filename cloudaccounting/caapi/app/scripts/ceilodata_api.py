@@ -25,33 +25,20 @@ from collections import defaultdict
 import logging
 from prettytable import PrettyTable
 import json
+from config import MYSQL_URL
+
 mysql_url=""
 start_time=""
 end_time=""
-
-def read_config(filename):
-    # read the mapping of project-id to accounting group from a file
-    try:
-        f = open(filename,"r")
-        try:
-            s=f.read()
-            #print s
-            result=json.loads(s)
-            f.close
-            return result
-        except:
-            print >> sys.stderr, 'ERROR: Cannot parse configuration file ' + filename
-            exit(1)
-    except IOError:
-        print >> sys.stderr, 'ERROR: Cannot open configuration file ' + filename
-        exit(1)
-
 
 # getting the sample volume and sampling time of the first sample
 
 def get_start_sample_info(row_list):
     result={}
     try:
+        #row_list = sorted(row_list,key=lambda x:x["counter_volume"])
+        #start_sample_time=row_list[0]["start_time"]
+        #start_sample_value=row_list[0]["counter_volume"]
         start_sample_time=row_list[0]["sample_time"]
         start_sample_value=row_list[0]["counter_volume"]
         resource_id=row_list[0]["r_id"]
@@ -74,6 +61,9 @@ def get_start_sample_info(row_list):
 def get_end_sample_info(row_list):
      result={}
      try:
+        #row_list = sorted(row_list, key=lambda x:x["counter_volume"])
+        #end_sample_time=row_list[-1]["end_time"]
+        #end_sample_value=row_list[-1]["counter_volume"]
         end_sample_time=row_list[0]["end_time"]
         end_sample_value=row_list[0]["counter_volume"]
         resource_id=row_list[0]["r_id"]
@@ -94,7 +84,7 @@ def get_end_sample_info(row_list):
 
 # getting the ceilometer data stored the database
 
-def get_ceilo_data_from_database(start_time, end_time):
+def get_ceilo_data_from_database(start_time, end_time, mysql_url):
     logging.info("Contacting the database")
     logging.info("mysql url is %s ",mysql_url)
     db_api.create_session(mysql_url) # starts the database session
@@ -108,6 +98,7 @@ def get_ceilo_data_from_database(start_time, end_time):
     # group the metric data based on resource ids
     ceilo_data={}
     tenant_info={}
+    #print metric_data
     try: 
         sorted_resource_data=extract_resource_info(resource_data, end_time)
         metric_data = sorted(metric_data,key=lambda x:x["r_id"])
@@ -125,6 +116,7 @@ def get_ceilo_data_from_database(start_time, end_time):
                 elif(counter_name=="network.outgoing.bytes"):
                     net_out_info.append(row)
             sorted_metric_data[rid] = {"cpu_info":cpu_info,"net_in_info":net_in_info,"net_out_info":net_out_info}
+            '''#if rid=="84f51ab5-79a0-45d8-ab8a-88d1ef0f74e3":'''
     except:
         logging.info("Error Occured While Sorting the database info")
     ceilo_data={"resource_data":sorted_resource_data, "metric_data":sorted_metric_data}
@@ -154,22 +146,30 @@ def input_creation(ceilo_data, start_time, end_time):
     sorted_resource_data = ceilo_data["resource_data"]
     sorted_metric_data = ceilo_data["metric_data"]
     res_id = 0
+    #print sorted_metric_data
     for resource_id in sorted_metric_data.keys():
         logging.info("ssm input creation for historical data started")
         resource_info={}
         info = {}
+        tmp = {}
         try:
             resource_info=sorted_resource_data[resource_id]
             sorted_item=sorted_metric_data[resource_id]
             cpu_info=sorted_item["cpu_info"]
             net_in_info=sorted_item["net_in_info"]
             net_out_info=sorted_item["net_out_info"]
+            '''if resource_id=="84f51ab5-79a0-45d8-ab8a-88d1ef0f74e3":
+               print net_out_info'''
             tmp_cpu={}
             tmp_net_in={}
             tmp_net_out={}
-            tmp = {}
+            #tmp = {}
             try:
                 tmp["resource_id"]=resource_info["resource_id"]
+            except:
+                pass
+            try:
+                tmp["project_id"]=resource_info["project_id"]
             except:
                 pass
             try:
@@ -188,8 +188,6 @@ def input_creation(ceilo_data, start_time, end_time):
                 group_name="default"
                 try:
                     tenant_name=resource_info["tenant_name"]
-                    if("-" in tenant_name):
-                        group_name=tenant_name.split("-")[0]
                     group_name=tenant_name.split()[0]
                 except:
                     logging.info("Group name is default")
@@ -244,9 +242,28 @@ def input_creation(ceilo_data, start_time, end_time):
                 tmp["end_time"]=resource_info["terminated_at"]
             except:
                 pass
+            # These four fields are required for daily_resource_data
+            try:
+                tmp["created_at"]=resource_info["created_at"]
+            except:
+                pass
+            try:
+                tmp["launched_at"]=resource_info["launched_at"]
+            except:
+                pass
+            try:
+                tmp["deleted_at"]=resource_info["deleted_at"]
+            except:
+                pass
+            try:
+                tmp["terminated_at"]=resource_info["terminated_at"]
+            except:
+                pass
+
             if(cpu_info):
                 start_sample_info = {}
                 end_sample_info = {}
+                #tmp_cpu = {}
                 start_sample_info=get_start_sample_info(cpu_info)
                 end_sample_info=get_end_sample_info(cpu_info)
                 try:
@@ -277,7 +294,7 @@ def input_creation(ceilo_data, start_time, end_time):
                     logging.info("Launch Time is not available for resource %s" %(resource_id))
                     tmp_cpu["wall_duration"] = wall_duration
                 except:
-                    print "SOme Error in CPU wall"
+                    print "Some Error in CPU wall"
                     tmp_cpu["wall_duration"] = wall_duration
                     logging.info("Error Occured while calculating wall duration")
                 try:
@@ -286,6 +303,10 @@ def input_creation(ceilo_data, start_time, end_time):
                     pass
                 try:
                     tmp_cpu["source"]=cpu_info[0]["source"]
+                except:
+                    pass
+                try:
+                    tmp_cpu["counter_type"]=cpu_info[0]["counter_type"]
                 except:
                     pass
                 try:
@@ -308,6 +329,8 @@ def input_creation(ceilo_data, start_time, end_time):
             if(net_in_info):
                 start_sample_info = {}
                 end_sample_info = {}
+                #tmp_net_in = copy.deepcopy(tmp)
+                #tmp_net_in = {}
                 start_sample_info=get_start_sample_info(net_in_info)
                 end_sample_info=get_end_sample_info(net_in_info)
                 try:
@@ -350,6 +373,10 @@ def input_creation(ceilo_data, start_time, end_time):
                 except:
                     pass
                 try:
+                    tmp_net_in["counter_type"]=net_in_info[0]["counter_type"]
+                except:
+                    pass
+                try:
                     tmp_net_in["start_counter_volume"]=start_sample_info["start_sample_value"]
                 except:
                     pass
@@ -367,6 +394,8 @@ def input_creation(ceilo_data, start_time, end_time):
                     pass
 
             if(net_out_info):
+                #tmp_net_out = copy.deepcopy(tmp)
+                #tmp_net_out = {} 
                 start_sample_info = {}
                 end_sample_info = {}
                 start_sample_info = get_start_sample_info(net_out_info)
@@ -402,26 +431,37 @@ def input_creation(ceilo_data, start_time, end_time):
                         print "Some Error in NET OUT wall"
                         logging.info("Error Occured while calculating wall duration")
                         tmp_net_out["wall_duration"]=wall_duration
+
                 try:
                     tmp_net_out["counter_unit"] = net_out_info[0]["counter_unit"]
                 except:
                     pass
+
                 try:
                     tmp_net_out["source"]=net_out_info[0]["source"]
                 except:
                     pass
+
+                try:
+                    tmp_net_out["counter_type"]=net_out_info[0]["counter_type"]
+                except:
+                    pass
+
                 try:
                     tmp_net_out["start_counter_volume"]=start_sample_info["start_sample_value"]
                 except:
                     pass
+
                 try:
                     tmp_net_out["start_sample_time"]=start_sample_info["start_time"]
                 except:
                     pass
+
                 try:
                     tmp_net_out["end_counter_volume"]=end_sample_info["end_sample_value"]
                 except:
                     pass
+
                 try:
                     tmp_net_out["end_sample_time"]=end_sample_info["end_time"]
                 except:
@@ -434,12 +474,16 @@ def input_creation(ceilo_data, start_time, end_time):
         info["cpu"] = tmp_cpu
         info["net_in"] = tmp_net_in
         info["net_out"] = tmp_net_out
+        #input_data[resource_id]=info
+        #print info
         input_data.append(info)
+        #res_id=resource_id
     logging.info("ssm input creation for historical data finished")
+    #print input_data
     return input_data
 
 
-def report_generation_tenant(sorted_metric_info):
+def report_generation_tenant(sorted_metric_info, tenantinfo = ""):
     x = PrettyTable(["Tenant", "VMs", "VCPUs", "Memory(MB)", "Disk Space(GB)", "VM Wall Time(s)", "CPU Wall Time(s)", "Avg. CPU Usage", "Net In(GB)", "Net Out(GB)", "Cores * CPU Time", "Cores * Wall Time"])
 
     x.align["Accounting Group"] = "l" # Left align city names
@@ -454,7 +498,7 @@ def report_generation_tenant(sorted_metric_info):
     sort_tenant_wise = sorted(sorted_metric_info, key=lambda x:x["tenant_name"])
     tenant_wise = {}
     for tenant, row_list in groupby(sort_tenant_wise, lambda x:x["tenant_name"]):
-        tenant_wise[tenant] = {}
+        #tenant_wise[tenant] = {}
         no_of_vms = 0
         no_of_vcpus = 0
         total_wall_time = 0
@@ -466,10 +510,13 @@ def report_generation_tenant(sorted_metric_info):
         total_cpu_wall_time = 0
         total_cores_x_wall_time = 0
         total_avg_usage_per_core = 0
-        total_net_in_count = 0
-        total_net_out_count = 0
+        total_net_in_mb = 0
+        total_net_out_mb = 0
         tenant_dict = {}
-        tenantcount = 0
+        tenant_id = ""
+        vo_name = ""
+        vo_name = tenant.split()[0] 
+        #print tenant
         for row in row_list:
             res_id = row["resource_id"]
             cpu_info = row["cpu"]
@@ -479,14 +526,9 @@ def report_generation_tenant(sorted_metric_info):
             end_counter_volume = 0
             vm_wall_time_list = []
             try:
-                tenant_name = row["tenant_name"]
                 tenant_id = row["tenant_id"]
             except:
                 pass
-
-            if tenant_name not in  tenant_dict.keys():
-                tenant_dict[tenant_name] = {}
-                tenantcount += 1
 
             try:
                 vcpus = int(row["vcpus"])
@@ -554,7 +596,7 @@ def report_generation_tenant(sorted_metric_info):
                 cpu_wall_time =  float(end_counter_volume - start_counter_volume) / 1000000000.0
 
                 total_cores_x_cpu_wall_time += (no_of_vcpus * cpu_wall_time)
-                total_cpu_wall_time += cpu_wall_time
+                total_cpu_wall_time += long(cpu_wall_time)
 
                 #usage_per_core = 0 # in seconds
                 avg_usage_per_core = 0
@@ -569,48 +611,55 @@ def report_generation_tenant(sorted_metric_info):
             if(net_in_info):
                 counter_volume_start = 0
                 try:
-                    counter_volume_start = float(net_in_info['start_counter_volume']) / 1073741824.0
+                    counter_volume_start = float(net_in_info['start_counter_volume']) / 1048576.0
                 except:
                     pass
                 counter_volume_end = 0
                 try:
-                    counter_volume_end = float(net_in_info['end_counter_volume'])/ 1073741824.0
+                    counter_volume_end = float(net_in_info['end_counter_volume'])/ 1048576.0
                 except:
                     counter_volume_end = 0
-                total_net_in_count += long(counter_volume_end - counter_volume_start)
+                total_net_in_mb += (counter_volume_end - counter_volume_start)
             if(net_out_info):
                 counter_volume_start = 0
                 try:
-                    counter_volume_start = float(net_out_info['start_counter_volume']) / 1073741824.0
+                    counter_volume_start = float(net_out_info['start_counter_volume']) / 1048576.0
                 except:
                     counter_volume_start = 0
 
                 counter_volume_end = 0
                 try:
-                    counter_volume_end = float(net_out_info['end_counter_volume']) / 1073741824.0
+                    counter_volume_end = float(net_out_info['end_counter_volume']) / 1048576.0
                 except:
                     counter_volume_end = 0
-                total_net_out_count += long(counter_volume_end - counter_volume_start)
-        total_avg_usage_per_core = total_avg_usage_per_core /float(no_of_vcpus)
-        tenant_wise[tenant]['no_of_tenants'] = tenantcount
-        tenant_wise[tenant]['no_of_vms'] = no_of_vms
-        tenant_wise[tenant]['no_of_vcpus'] = no_of_vcpus
-        tenant_wise[tenant]['memory_mb'] = memory_mb
-        tenant_wise[tenant]['disk_gb'] = disk_gb
-        tenant_wise[tenant]['total_wall_time'] = total_wall_time
-        tenant_wise[tenant]['total_cpu_wall_time'] = total_cpu_wall_time
-        tenant_wise[tenant]['total_cores_x_cpu_wall_time'] = total_cores_x_cpu_wall_time
-        tenant_wise[tenant]['total_avg_usage_per_core'] = total_avg_usage_per_core
-        tenant_wise[tenant]['total_net_in_gb'] = total_net_in_count
-        tenant_wise[tenant]['total_net_out_gb'] = total_net_out_count
-        tenant_wise[tenant]['total_cores_x_wall_time'] = total_cores_x_wall_time
-        x.add_row([tenant, no_of_vms, no_of_vcpus, memory_mb, disk_gb, total_wall_time, total_cpu_wall_time, "{0:.6f}".format(tenant_wise[tenant]['total_avg_usage_per_core']), \
-total_net_in_count, total_net_out_count, total_cores_x_cpu_wall_time, total_cores_x_wall_time])
-    jsonx = json.dumps(tenant_wise, sort_keys=True,indent=4, separators=(',', ': '))
+                total_net_out_mb += (counter_volume_end - counter_volume_start)
+        tenant_wise[tenant_id] = {}
+        tenant_wise[tenant_id]['tenant_id'] = tenant_id
+        tenant_wise[tenant_id]['tenant_name'] = tenant
+        tenant_wise[tenant_id]['vo_name'] = vo_name
+        #tenant_wise[tenant_id]['no_of_tenants'] = tenantcount
+        tenant_wise[tenant_id]['no_of_vms'] = no_of_vms
+        tenant_wise[tenant_id]['no_of_vcpus'] = no_of_vcpus
+        tenant_wise[tenant_id]['memory_mb'] = memory_mb
+        tenant_wise[tenant_id]['disk_gb'] = disk_gb
+        tenant_wise[tenant_id]['total_wall_time'] = total_wall_time
+        tenant_wise[tenant_id]['total_cpu_wall_time'] = total_cpu_wall_time
+        tenant_wise[tenant_id]['total_cores_x_cpu_wall_time'] = total_cores_x_cpu_wall_time
+        tenant_wise[tenant_id]['total_avg_usage_per_core'] = float(total_avg_usage_per_core) / float(no_of_vcpus)
+        tenant_wise[tenant_id]['total_net_in_mb'] = long(total_net_in_mb)
+        tenant_wise[tenant_id]['total_net_out_mb'] = long(total_net_out_mb)
+        tenant_wise[tenant_id]['total_cores_x_wall_time'] = total_cores_x_wall_time
+        x.add_row([tenant, no_of_vms, no_of_vcpus, memory_mb, disk_gb, total_wall_time, total_cpu_wall_time, "{0:.4f}".format(tenant_wise[tenant_id]['total_avg_usage_per_core']), \
+total_net_in_mb, total_net_out_mb, total_cores_x_cpu_wall_time, total_cores_x_wall_time])
+    #print x
+    if tenantinfo:
+        jsonx = json.dumps(tenant_wise[tenantinfo], sort_keys=True,indent=4, separators=(',', ': '))
+    else:
+        jsonx = json.dumps(tenant_wise, sort_keys=True,indent=4, separators=(',', ': '))
     return jsonx, x
 
 
-def report_generation_vo(sorted_metric_info):
+def report_generation_vo(sorted_metric_info, voinfo =  ""):
     x = PrettyTable(["VO", "Tenants","VMs", "VCPUs", "Memory(MB)", "Disk Space(GB)", "VM Wall Time(s)", "CPU Wall Time(s)", "Avg. CPU Usage", "Net In(GB)", "Net Out(GB)", "Cores * CPU Time", "Cores * Wall Time"])
     
     x.align["Accounting Group"] = "l" # Left align city names
@@ -641,11 +690,11 @@ def report_generation_vo(sorted_metric_info):
         total_cpu_wall_time = 0
         total_cores_x_wall_time = 0 
         total_avg_usage_per_core = 0
-        total_net_in_count = 0
-        total_net_out_count = 0
+        total_net_in_mb = 0
+        total_net_out_mb = 0
         tenant_dict = {}
         tenantcount = 0
-        print vo
+        #print vo
         for row in row_list:
             res_id = row["resource_id"]
             cpu_info = row["cpu"]
@@ -659,10 +708,10 @@ def report_generation_vo(sorted_metric_info):
                 tenant_id = row["tenant_id"]
             except:
                 pass
-
+               
             if tenant_name not in  tenant_dict.keys():
                 tenant_dict[tenant_name] = {}
-                tenantcount += 1
+                tenantcount += 1            
 
             try:
                 vcpus = int(row["vcpus"])
@@ -703,7 +752,7 @@ def report_generation_vo(sorted_metric_info):
                 except:
                     vm_wall_time_list.append(vm_wall_time_netout)
 
-            vm_wall_time = max(vm_wall_time_cpu,vm_wall_time_netin, vm_wall_time_netout)
+            vm_wall_time = max(vm_wall_time_cpu, vm_wall_time_netin, vm_wall_time_netout)
 
             if vcpus is not None and vcpus >0:
                 no_of_vms += 1
@@ -730,7 +779,7 @@ def report_generation_vo(sorted_metric_info):
                 cpu_wall_time =  float(end_counter_volume - start_counter_volume) / 1000000000.0
                   
                 total_cores_x_cpu_wall_time += (no_of_vcpus * cpu_wall_time)
-                total_cpu_wall_time += cpu_wall_time
+                total_cpu_wall_time += long(cpu_wall_time)
 
                 #usage_per_core = 0 # in seconds
                 avg_usage_per_core = 0
@@ -745,30 +794,30 @@ def report_generation_vo(sorted_metric_info):
             if(net_in_info):
                 counter_volume_start = 0
                 try:
-                    counter_volume_start = float(net_in_info['start_counter_volume']) / 1073741824.0
+                    counter_volume_start = float(net_in_info['start_counter_volume']) / 1048576.0
                 except:
                     pass
                 
                 counter_volume_end = 0
                 try:
-                    counter_volume_end = float(net_in_info['end_counter_volume'])/ 1073741824.0
+                    counter_volume_end = float(net_in_info['end_counter_volume'])/ 1048576.0
                 except:
                     counter_volume_end = 0
-                total_net_in_count += (counter_volume_end - counter_volume_start)
+                total_net_in_mb += (counter_volume_end - counter_volume_start)
             if(net_out_info):
                 counter_volume_start = 0
                 try:
-                    counter_volume_start = float(net_out_info['start_counter_volume']) / 1073741824.0
+                    counter_volume_start = float(net_out_info['start_counter_volume']) / 1048576.0
                 except:
                     counter_volume_start = 0
                 
                 counter_volume_end = 0
                 try:
-                    counter_volume_end = float(net_out_info['end_counter_volume']) / 1073741824.0
+                    counter_volume_end = float(net_out_info['end_counter_volume']) / 1048576.0
                 except:
                     counter_volume_end = 0
-                total_net_out_count += (counter_volume_end - counter_volume_start)
-
+                total_net_out_mb += (counter_volume_end - counter_volume_start)
+        vo_wise[vo]['vo_name'] = vo
         vo_wise[vo]['no_of_tenants'] = tenantcount
         vo_wise[vo]['no_of_vms'] = no_of_vms
         vo_wise[vo]['no_of_vcpus'] = no_of_vcpus
@@ -778,128 +827,40 @@ def report_generation_vo(sorted_metric_info):
         vo_wise[vo]['total_cpu_wall_time'] = total_cpu_wall_time
         vo_wise[vo]['total_cores_x_cpu_wall_time'] = total_cores_x_cpu_wall_time
         vo_wise[vo]['total_avg_usage_per_core'] = float(total_avg_usage_per_core) / float(no_of_vcpus)
-        vo_wise[vo]['total_net_in_count'] = long(total_net_in_count)
-        vo_wise[vo]['total_net_out_count'] = long(total_net_out_count)
+        vo_wise[vo]['total_net_in_mb'] = long(total_net_in_mb)
+        vo_wise[vo]['total_net_out_mb'] = long(total_net_out_mb)
         vo_wise[vo]['total_cores_x_wall_time'] = total_cores_x_wall_time
-        x.add_row([vo, tenantcount, no_of_vms, no_of_vcpus, memory_mb, disk_gb, total_wall_time, total_cpu_wall_time, "{0:.6f}".format(vo_wise[vo]['total_avg_usage_per_core']), \
-total_net_in_count, total_net_out_count, total_cores_x_cpu_wall_time, total_cores_x_wall_time])
+        x.add_row([vo, tenantcount, no_of_vms, no_of_vcpus, memory_mb, disk_gb, total_wall_time, total_cpu_wall_time, "{0:.2f}".format(vo_wise[vo]['total_avg_usage_per_core']), \
+total_net_in_mb, total_net_out_mb, total_cores_x_cpu_wall_time, total_cores_x_wall_time])
     #print x
-    jsonx = json.dumps(vo_wise, sort_keys=True,indent=4, separators=(',', ': '))
+    if voinfo:
+        jsonx = json.dumps(vo_wise[voinfo], sort_keys=True,indent=4, separators=(',', ': '))
+    else:
+        jsonx = json.dumps(vo_wise, sort_keys=True,indent=4, separators=(',', ': '))
     return jsonx, x
 
-aparser = argparse.ArgumentParser(description='Publish ceilometer records to APEL using SSM2')
-group1 = aparser.add_mutually_exclusive_group()
-group1.add_argument('-s', '--start', dest='start', action='store',help='start time in format "yyyy-mm-dd"',default=False)
-group1.add_argument('-m', '--month', dest='month', type=int, choices=[1,2,3,4,5,6,7,8,9,10,11,12],action='store',help='month for which report has to be generated, e.g 5 for May',default=False)
-aparser.add_argument('-e', '--end', dest='end', action='store', help='end time for in format "yyyy-mm-dd"',default=False)
-aparser.add_argument('-v', '--verbose', dest="loglevel",action='store_const', help='be verbose',const=logging.INFO)
-aparser.add_argument('-j', '--json', dest='json', action='store_true', help='print results in json',default=False)
-aparser.add_argument('-w', '--wise', dest='wise', action='store', help='print results "vo" wise or "tenant" wise\n For vo wise give -w vo and for tenant wise give -w tenant',default="vo")
-aparser.add_argument('-d', '--debug', dest='loglevel', action='store_const', help='produce debugging output',const=logging.DEBUG,default=logging.WARNING)
-aparser.add_argument('-c', '--config', dest='configfile', action='store', help='ceilometer2ssm configuration file location',default="/etc/ceilodata.conf")
-aparser.add_argument('-l', '--logfile', dest='logfile', action='store', help='ceilometer2ssm log file location',default="/var/log/ceilodata/ceilodata2acct_monthly.log")
+def tenant_wise(start_time_obj,end_time_obj, tenantinfo = ""):
+    #print MYSQL_URL
+    ceilo_data = get_ceilo_data_from_database(start_time_obj,end_time_obj, MYSQL_URL)
+    #print "Ceilo data complete"
+    input_data = input_creation(ceilo_data, start_time_obj, end_time_obj)
+    #print "Input Creation Complete"
+    jsonx, reports = report_generation_tenant(input_data, tenantinfo)  
+    return jsonx
 
-args = aparser.parse_args()
-logfile = args.logfile
-configfile = args.configfile
-jsonize = args.json
-wise = args.wise
-logging.basicConfig(filename=logfile,level=args.loglevel)
-month=args.month
+def vo_wise(start_time_obj,end_time_obj, voinfo = ""):
+    ceilo_data = get_ceilo_data_from_database(start_time_obj,end_time_obj, MYSQL_URL)
+    #print "Ceilo data complete"
+    input_data = input_creation(ceilo_data, start_time_obj, end_time_obj)
+    #print "Input Creation Complete"
+    jsonx, reports = report_generation_vo(input_data, voinfo)
+    return jsonx
 
-today=date.today()
-current_month=int(today.month)
-
-#print month
-if args.start and args.end:
-    #try:
-    start_time_obj = datetime.strptime(str(args.start), "%Y-%m-%d")
-    start_time = start_time_obj.strftime("%Y-%m-%d 00:00:00")
-    end_time_obj = datetime.strptime(str(args.end), "%Y-%m-%d")
-    end_time = end_time_obj.strftime("%Y-%m-%d 23:59:59")
-    #except:
-    #   print "error in date in input date format"
-
-if (args.start and not args.end) or (not args.start and args.end) :
-    if not args.start:
-        print "Please provide start date."
-        logging.info("Please provide start date.")
-    if not args.end:
-        logging.info("Please provide end date.")
-        print "Please provide end date."
-
-if not args.start and not args.end:
-    if not month:
-        month = current_month     
-    else:
-        month=int(month)  
-    
-    start_time_obj = datetime(int(today.year), month, 1, 0, 0, 0)
-    start_time = start_time_obj.strftime("%Y-%m-%d %H:%M:%S")
-    month_last_day =  int(monthrange(today.year, month)[1])
-    end_time_obj = datetime(today.year, month, month_last_day, 23, 59, 59)
-    end_time = end_time_obj.strftime("%Y-%m-%d %H:%M:%S")
-
-logging.info("start time: %s",start_time)
-logging.info("end time: %s",end_time)
-logging.info("month: %s",month)
-
-# read mapping from file
-config = read_config(configfile)
-#mapping = config["mapping"]
-    
-# database info
-try:
-    database_info=config["database"]
-    try:
-        mysql_user_name=database_info["user"]
-        mysql_password=database_info["password"]
-        database_name=database_info["database_name"]
-        mysql_url="mysql://"+mysql_user_name+":"+mysql_password+"@localhost:3306/"+database_name
-    except:
-        print >> sys.stderr, "ERROR: My sql user name and password has not been properly set"
-        logging.error("ERROR: My sql user name and password has not been properly set")
-
-except:
-    print >> sys.stderr, "ERROR: No database info in the file"
-    logging.error("ERROR: No database info in the file")
-
-try:
-    config_parameters = config["config_parameters"]
-except:
-    if (verbose):
-        print >> sys.stderr, "ERROR: No configuration parametes defined in the configuration file"
-        logging.error("ERROR: No configuration parametes defined in the configuration file")
-try:
-    error_file=config_parameters["reports_error_file"]
-except KeyError:
-    print >> sys.stderr, "ERROR: Error file is not set"
-    logging.error("ERROR: Error file is not set")
-    sys.exit(1)
-
-#ceilo_data={}
-#input_data={}
-start_time_obj =  datetime.strptime(start_time, "%Y-%m-%d %H:%M:%S")
-end_time_obj = datetime.strptime(end_time, "%Y-%m-%d %H:%M:%S")
-logging.debug("Polling the ceilometer data from database")
-ceilo_data=get_ceilo_data_from_database(start_time_obj,end_time_obj)
-input_data=input_creation(ceilo_data, start_time_obj, end_time_obj)
-#print input_data
-if wise == "vo":
-    jsonx, reports = report_generation_vo(input_data)
-    if jsonize:
-        print jsonx
-    else:
-        print reports
-elif wise =="tenant":
-    jsonx, reports = report_generation_tenant(input_data)
-    if jsonize:
-        print jsonx
-    else:
-        print reports
-else:
-    print "Invalid value for wise option.\n Use -w vo or -w tenant"
-#logging.info("Local statistics\n %s",reports)
-
-
-
+def daily_resource_data(start_time_obj,end_time_obj):
+    ceilo_data = get_ceilo_data_from_database(start_time_obj,end_time_obj, MYSQL_URL)
+    print "Ceilo data complete"
+    input_data = input_creation(ceilo_data, start_time_obj, end_time_obj)
+    print "Input Creation Complete"
+    #input_data = json.dumps(input_data, sort_keys=True,indent=4, separators=(',', ': '))
+    #print input_data
+    return input_data 
