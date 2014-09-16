@@ -6,11 +6,10 @@
 Summary: OpenStack Ceilometer to SSM2 interface
 Name: ceilometer2ssm
 Version: 0.3.6
-Release: 5%{?dist}
+Release: 7%{?dist}
 License: ASL 2.0
 Vendor: CERN, ASGC
 Group: Applications/Internet
-BuildArch: noarch
 BuildRoot:  %{_tmppath}/%{name}
 Url: https://github.com/schwicke/ceilometer2ssm
 #Source0: %{name}.tar.gz
