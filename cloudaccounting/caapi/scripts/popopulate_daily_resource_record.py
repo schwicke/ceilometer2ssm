@@ -162,7 +162,7 @@ def update_resource_record():
         host_pcores = None
 
         res_record = None
-        res_record = session.query(Daily_Resource_Record).filter(Daily_Resource_Record.resource_id == row['resource_id'], Daily_Resource_Record.date==today).first()
+        res_record = session.query(Daily_Resource_Record).filter(Daily_Resource_Record.resource_id == row['resource_id']).first()
         if res_record is not None:
             host_name = res_record.host_name
             host_hs06 = res_record.host_hs06
@@ -247,6 +247,6 @@ def update_resource_record():
             session.add(new_row)
             session.commit()
 
-#for day in range(130, 1, -1):
-update_resource_record()
+#for day in range(65, 1, -1):
+#    update_resource_record(day)
 

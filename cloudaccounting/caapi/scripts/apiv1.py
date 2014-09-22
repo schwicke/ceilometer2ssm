@@ -147,7 +147,7 @@ def get_vo_data(start_time, end_time, vo_info):
                  lcores = group_list[0]['host_lcores']
                  normalization_factor = float(hs_06)/float(lcores)
              except:
-                 normalization_factor = None
+                 normalization_factor = 8.0
              wall_duration = 0
              terminated_time = group_list[0]["terminated_at"]
              launched_time = group_list[0]["launched_at"]
@@ -258,7 +258,7 @@ def get_tenant_data(start_time, end_time, tenant_info):
                  normalization_factor = float(hs_06)/float(lcores)
                  #print normalization_factor
              except:
-                 normalization_factor = None
+                 normalization_factor = 8.0
              wall_duration = 0
              terminated_time = group_list[0]["terminated_at"]
              launched_time = group_list[0]["launched_at"]
