@@ -33,6 +33,10 @@ class Daily_Resource_Record(Base):
     launched_at = Column(DateTime)
     deleted_at = Column(DateTime)
     terminated_at = Column(DateTime)
+    host_name = Column(String(255))
+    host_hs06 = Column(String(32))
+    host_lcores = Column(String(32))
+    host_pcores = Column(String(32))
 
     #cpu_counter_source = Column(String(64))
     cpu_counter_unit = Column(String(32))

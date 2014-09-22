@@ -24,7 +24,8 @@ from cloudaccounting import hwdbquery  # queries hwdb database
 import argparse
 from caapi.scripts.popopulate_daily_resource_record import update_resource_record
 
-hep_spec_data={} # stores the serial number-hep_spec mappings
+hep_spec_data_id={}# stores the serial number-hep_spec mappings
+hep_spec_data_name = {} # stores the host name-hep_spec mappings
 
 # reading the configuration file /etc/ceilodata.conf
 
@@ -50,16 +51,20 @@ def read_config():
 def getHepSpecData():
     hwData = hwdbquery.getDataFromHwDb()
     decoded = json.loads(hwData)
+    hep_spec_data_id = {}
+    hep_spec_data_name = {}
     for server in decoded["rows"]:
         id=server['id'];
+        name = server['key']
         values=server['value']
         hep_spec="nil"
         try :
             hep_spec=values['HEP-SPEC06']
         except KeyError:
             pass
-        hep_spec_data[id]=hep_spec
-    return hep_spec_data
+        hep_spec_data_id[id]=hep_spec
+        hep_spec_data_name[name]=hep_spec
+    return hep_spec_data_id,hep_spec_data_name
 
 # storing the resource data in the database
 def store_sorted_resource_data(sorted_resource_data,start_time,end_time,lgr):
@@ -595,7 +600,7 @@ args = aparser.parse_args()
 yesterday=args.yesterday
 debug = args.debug
 
-hep_spec_data=getHepSpecData()
+hep_spec_data_id,hep_spec_data_name=getHepSpecData()
 
 config = read_config()
 mysql_url=""
@@ -736,6 +741,7 @@ for tmp_list in time_list:
                                                   None, None, None,None,None,
                                                   None,None]
                     for attr_name in one_sample:
+
                         try:
                             if attr_name == 'resource_metadata':
                                 for meta_data_name in one_sample[attr_name]:
@@ -760,16 +766,21 @@ for tmp_list in time_list:
                     node=req_data[3]
 
                     hep_spec_value=None
-                    if node is not None and  node !="":
+                    if node is not None and  node !="" and node!="None":
                         try:
                             hostname=node.split(".")[0]
                             serial_number=landbquery.getSerialNumber(landb_user_name,landb_password,hostname)
-                            serial_number=serial_number.replace("-"," ")
-                            try:
-                                hep_spec_value=hep_spec_data[serial_number]
-                            except KeyError:
-                                print >> sys.stderr, "ERROR: Serial Number,"+ serial_number+" has no entry in the hep-spec table "
-
+                            if serial_number is not None:
+                                serial_number=serial_number.replace("-"," ",1)
+                                try:
+                                    hep_spec_value=hep_spec_data_id[serial_number]
+                                except KeyError:
+                                    print >> sys.stderr, "ERROR: Serial Number,"+ serial_number+" has no entry in the hep-spec table "
+                            else:
+                                try:
+                                    hep_spec_value=hep_spec_data_name[node]
+                                except KeyError:
+                                    print >> sys.stderr, "ERROR: Host has no entry in the hep-spec table" 
                         except:
                             print >> sys.stderr, "ERROR: Error Occured during HEP-SPEC Calculation"
 

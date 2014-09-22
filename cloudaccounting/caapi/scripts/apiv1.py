@@ -15,11 +15,8 @@ from sqlalchemy.orm import sessionmaker
 from db_declarative import Base, Daily_Resource_Record
 import logging
 from prettytable import PrettyTable
-#from config import MYSQL_URL
+from config import MYSQL_URL
 
-MYSQL_URL = "mysql://wlcgacc:m3t3rIng2014@localhost:3306/cloudaccounting"
-start_time=""
-end_time=""
 
 # getting the sample volume and sampling time of the first sample
 
@@ -129,20 +126,28 @@ def get_vo_data(start_time, end_time, vo_info):
         res_data[voname]['disk_gb'] = 0
         res_data[voname]['net_in_mb'] = 0
         res_data[voname]['net_out_mb'] = 0
-        res_data[voname]['cpu_wall_secs'] = 0
-        res_data[voname]['wall_time_secs'] = 0
-        #res_data[voname]['avg_usage_per_core'] = 0
+        res_data[voname]['total_cpu_secs'] = 0
+        res_data[voname]['total_hs06_cpu_secs'] = 0
+        res_data[voname]['total_per_cpu_secs'] = 0
+        res_data[voname]['total_hs06_per_cpu_secs'] = 0
+        res_data[voname]['total_wall_secs'] = 0
+        res_data[voname]['total_hs06_wall_secs'] = 0
         res_data[voname]['tenants_list'] = []
         for rid, row_group in groupby(data[voname], lambda x:x['resource_id']):
              group_list = list(row_group)
-             if group_list[0]['tenant_name'] not in  tenant_list:
+             if group_list[0]['tenant_name'] not in tenant_list:
                 tenant_list.append(group_list[0]['tenant_name'])
                 tenant = {}
                 tenant['name'] = group_list[0]['tenant_name']
                 tenant['id'] = group_list[0]['tenant_id']
                 res_data[voname]['tenants_list'].append(tenant)
                 res_data[voname]['no_of_tenants'] += 1 
-	     #try:
+	     try:
+                 hs_06 =  group_list[0]['host_hs06']
+                 lcores = group_list[0]['host_lcores']
+                 normalization_factor = float(hs_06)/float(lcores)
+             except:
+                 normalization_factor = None
              wall_duration = 0
              terminated_time = group_list[0]["terminated_at"]
              launched_time = group_list[0]["launched_at"]
@@ -167,10 +172,12 @@ def get_vo_data(start_time, end_time, vo_info):
              elif(launched_time is None):
                  diff = end_time - start_time
                  wall_duration = diff.days * 86400 + diff.seconds
-             res_data[voname]['wall_time_secs'] += wall_duration
+             res_data[voname]['total_wall_secs'] += wall_duration
              res_data[voname]['no_of_vms'] += 1
+             vcpus = 0
              try:
-                 res_data[voname]['no_of_vcpus'] += int(group_list[0]['vcpus'])
+                 vcpus = int(group_list[0]['vcpus'])
+                 res_data[voname]['no_of_vcpus'] += vcpus                
              except:
                  pass
              try:
@@ -183,7 +190,18 @@ def get_vo_data(start_time, end_time, vo_info):
                  pass
              cpu_start_counter_volume, net_in_start_counter_volume, net_out_start_counter_volume = get_start_sample_info(group_list, 'cpu_start_counter_volume', 'net_in_start_counter_volume','net_out_start_counter_volume')
              cpu_end_counter_volume, net_in_end_counter_volume, net_out_end_counter_volume = get_end_sample_info(group_list, 'cpu_end_counter_volume', 'net_in_end_counter_volume','net_out_end_counter_volume')
-             res_data[voname]['cpu_wall_secs'] += cpu_end_counter_volume - cpu_start_counter_volume
+             diff_cpu = 0
+             diff_cpu = cpu_end_counter_volume - cpu_start_counter_volume
+             res_data[voname]['total_cpu_secs'] += diff_cpu 
+             try:
+                 total_per_cpu_secs = long(float(diff_cpu) / float(vcpus))
+             except:
+                 total_per_cpu_secs = 0
+             res_data[voname]['total_per_cpu_secs'] += total_per_cpu_secs
+             if normalization_factor is not None:
+                 res_data[voname]['total_hs06_cpu_secs'] += long(diff_cpu * normalization_factor)
+                 res_data[voname]['total_hs06_per_cpu_secs'] += long(total_per_cpu_secs * normalization_factor)
+                 res_data[voname]['total_hs06_wall_secs'] += long(wall_duration * normalization_factor)
              res_data[voname]['net_in_mb'] += net_in_end_counter_volume - net_in_start_counter_volume
              res_data[voname]['net_out_mb'] += net_out_end_counter_volume - net_out_start_counter_volume
         #print voname
@@ -225,13 +243,22 @@ def get_tenant_data(start_time, end_time, tenant_info):
         res_data[tenantid]['disk_gb'] = 0
         res_data[tenantid]['net_in_mb'] = 0
         res_data[tenantid]['net_out_mb'] = 0
-        res_data[tenantid]['cpu_wall_secs'] = 0
-        res_data[tenantid]['wall_time_secs'] = 0
-        #res_data[tenantid]['avg_usage_per_core'] = 0
+        res_data[tenantid]['total_cpu_secs'] = 0
+        res_data[tenantid]['total_hs06_cpu_secs'] = 0
+        res_data[tenantid]['total_per_cpu_secs'] = 0
+        res_data[tenantid]['total_hs06_per_cpu_secs'] = 0
+        res_data[tenantid]['total_wall_secs'] = 0
+        res_data[tenantid]['total_hs06_wall_secs'] = 0
         for rid, row_group in groupby(data[tenantid], lambda x:x['resource_id']):
              group_list = list(row_group)
              res_data[tenantid]['tenant_name'] = group_list[0]["tenant_name"]
-             #try:
+             try:
+                 hs_06 =  group_list[0]['host_hs06']
+                 lcores = group_list[0]['host_lcores']
+                 normalization_factor = float(hs_06)/float(lcores)
+                 #print normalization_factor
+             except:
+                 normalization_factor = None
              wall_duration = 0
              terminated_time = group_list[0]["terminated_at"]
              launched_time = group_list[0]["launched_at"]
@@ -256,10 +283,13 @@ def get_tenant_data(start_time, end_time, tenant_info):
              elif(launched_time is None):
                  diff = end_time - start_time
                  wall_duration = diff.days * 86400 + diff.seconds
-             res_data[tenantid]['wall_time_secs'] += wall_duration
+             res_data[tenantid]['total_wall_secs'] += wall_duration
              res_data[tenantid]['no_of_vms'] += 1
+             vcpus  = 0
+              
              try:
-                 res_data[tenantid]['no_of_vcpus'] += int(group_list[0]['vcpus'])
+                 vcpus  = int(group_list[0]['vcpus'])
+                 res_data[tenantid]['no_of_vcpus'] += vcpus
                  group_list[0]
              except:
                 pass
@@ -273,7 +303,18 @@ def get_tenant_data(start_time, end_time, tenant_info):
                  pass
              cpu_start_counter_volume, net_in_start_counter_volume, net_out_start_counter_volume = get_start_sample_info(group_list, 'cpu_start_counter_volume', 'net_in_start_counter_volume','net_out_start_counter_volume')
              cpu_end_counter_volume, net_in_end_counter_volume, net_out_end_counter_volume = get_end_sample_info(group_list, 'cpu_end_counter_volume', 'net_in_end_counter_volume','net_out_end_counter_volume')
-             res_data[tenantid]['cpu_wall_secs'] += cpu_end_counter_volume - cpu_start_counter_volume
+             diff_cpu = 0
+             diff_cpu  = cpu_end_counter_volume - cpu_start_counter_volume
+             res_data[tenantid]['total_cpu_secs'] += diff_cpu
+             try:
+                 total_per_cpu_secs = long(float(diff_cpu)/ float(vcpus))
+             except:
+                 total_per_cpu_secs = 0
+             res_data[tenantid]['total_per_cpu_secs'] += total_per_cpu_secs
+             if normalization_factor is not None:
+                 res_data[tenantid]['total_hs06_cpu_secs'] += long(diff_cpu * normalization_factor)
+                 res_data[tenantid]['total_hs06_per_cpu_secs'] += long(total_per_cpu_secs * normalization_factor)
+                 res_data[tenantid]['total_hs06_wall_secs'] += long(wall_duration * normalization_factor)
              res_data[tenantid]['net_in_mb'] += net_in_end_counter_volume - net_in_start_counter_volume
              res_data[tenantid]['net_out_mb'] += net_out_end_counter_volume - net_out_start_counter_volume
         #print tenantid

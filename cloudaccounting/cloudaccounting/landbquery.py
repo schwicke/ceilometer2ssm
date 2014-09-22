@@ -5,9 +5,12 @@ from types import *
 from suds.client import Client 
 from suds.sax.element import Element
 from suds.xsd.doctor import ImportDoctor, Import
-
+from suds import WebFault
+import sys
+import logging
+logging.getLogger('suds.client').setLevel(logging.CRITICAL)
 def getSerialNumber(username,password,host):
-    serial_number=None
+    serial_number = None
     try:
         type = 'CERN'
         url = 'https://network.cern.ch/sc/soap/soap.fcgi?v=5&WSDL'
@@ -19,11 +22,13 @@ def getSerialNumber(username,password,host):
         authHeader = Element('Auth').insert(authTok)
         client.set_options(soapheaders=authHeader)
         result=client.service.vmGetInfo(host);
-        vmParent=result['VMParent']
-        result=client.service.getDeviceInfo(vmParent)
+        try:
+            vmParent=result['VMParent']
+            result=client.service.getDeviceInfo(vmParent)
+        except:
+            result=client.service.getDeviceInfo(host)
         serial_number=result['SerialNumber']
-        print serial_number
+    #print serial_number
     except:
         print >> sys.stderr, "Error Occured while contacting the landb database"
     return serial_number
-
