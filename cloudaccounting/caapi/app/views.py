@@ -1,5 +1,5 @@
 from app import app
-from scripts import apiv1
+from caapi import apiv1
 from flask import abort,make_response,request
 from datetime import date, datetime, timedelta
 from calendar import monthrange

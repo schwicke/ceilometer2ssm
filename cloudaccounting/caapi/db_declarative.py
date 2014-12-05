@@ -6,7 +6,14 @@ from sqlalchemy import Date, DateTime, Float, Column, ForeignKey, Integer, Strin
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 from sqlalchemy import create_engine
-from config import MYSQL_URL 
+from caapi.config import read_config
+
+config=read_config()
+dbuser=config['database']['user']
+dbpwd=config['database']['password']
+database_name=config['database']['database_name']
+MYSQL_URL = "mysql://"+dbuser+":"+dbpwd+"@localhost:3306/cloudaccounting"    
+
 Base = declarative_base()
  
 class Daily_Resource_Record(Base):

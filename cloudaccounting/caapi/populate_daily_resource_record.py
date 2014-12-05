@@ -4,31 +4,15 @@ import sys
 sys.path.insert(0, '/usr/lib64/python2.6/site-packages/SQLAlchemy-0.7.8-py2.6-linux-x86_64.egg')
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from db_declarative import Base, Daily_Resource_Record
-from ceilodata_api import daily_resource_data
-#from config import MYSQL_URL
+from caapi.db_declarative import Base, Daily_Resource_Record
+from caapi.ceilodata_api import daily_resource_data
 from datetime import date, datetime, timedelta
 from calendar import monthrange
 from time import localtime, strftime
 import json
 from cloudaccounting import hwdbquery  # queries hwdb database
 from cloudaccounting import landbquery
-
-def read_config():
-    filename="/etc/ceilodata.conf"
-    try:
-        f = open(filename,"r")
-        try:
-            result= json.loads(f.read())
-            f.close
-            return result
-        except:
-            print >> sys.stderr, 'ERROR: Cannot parse configuration file ' + filename
-            exit(1)
-    except IOError:
-        print >> sys.stderr, 'ERROR: Cannot open configuration file ' + filename
-        exit(1)
-
+from caapi.config import read_config
 
 config = read_config()
 try:

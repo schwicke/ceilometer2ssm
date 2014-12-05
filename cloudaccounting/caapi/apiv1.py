@@ -15,10 +15,15 @@ from sqlalchemy.orm import sessionmaker
 from db_declarative import Base, Daily_Resource_Record
 import logging
 from prettytable import PrettyTable
-from config import MYSQL_URL
+from config import read_config
 
 
 # getting the sample volume and sampling time of the first sample
+config=read_config()
+dbuser=config['database']['user']
+dbpwd=config['database']['password']
+database_name=config['database']['database_name']
+MYSQL_URL = "mysql://"+dbuser+":"+dbpwd+"@localhost:3306/cloudaccounting"    
 
 def db_init():
     engine = create_engine(MYSQL_URL)

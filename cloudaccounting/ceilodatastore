@@ -22,7 +22,7 @@ import time
 from cloudaccounting import landbquery # queries landb datbase
 from cloudaccounting import hwdbquery  # queries hwdb database
 import argparse
-from caapi.scripts.popopulate_daily_resource_record import update_resource_record
+from caapi.populate_daily_resource_record import update_resource_record
 
 hep_spec_data_id={}# stores the serial number-hep_spec mappings
 hep_spec_data_name = {} # stores the host name-hep_spec mappings
@@ -677,18 +677,36 @@ req_attributes = ["user_id", "project_id", "resource_id", "node","name",
 
 #print yesterday
 time_list=[]
-tmp_time_list=[yesterday+" 00:00:00",yesterday+" 03:59:59"]
+#tmp_time_list=[yesterday+" 00:00:00",yesterday+" 03:59:59"]
+#time_list.append(tmp_time_list)
+#tmp_time_list=[yesterday+" 04:00:00",yesterday+" 07:59:59"]
+#time_list.append(tmp_time_list)
+#tmp_time_list=[yesterday+" 08:00:00",yesterday+" 11:59:59"]
+#time_list.append(tmp_time_list)
+#tmp_time_list=[yesterday+" 12:00:00",yesterday+" 15:59:59"]
+#time_list.append(tmp_time_list)
+#tmp_time_list=[yesterday+" 16:00:00",yesterday+" 19:59:59"]
+#time_list.append(tmp_time_list)
+#tmp_time_list=[yesterday+" 20:00:00",yesterday+" 23:59:59"]
+#time_list.append(tmp_time_list)
+# 3h slots only now ! 
+tmp_time_list=[yesterday+" 00:00:00",yesterday+" 02:59:59"]
 time_list.append(tmp_time_list)
-tmp_time_list=[yesterday+" 04:00:00",yesterday+" 07:59:59"]
+tmp_time_list=[yesterday+" 03:00:00",yesterday+" 05:59:59"]
 time_list.append(tmp_time_list)
-tmp_time_list=[yesterday+" 08:00:00",yesterday+" 11:59:59"]
+tmp_time_list=[yesterday+" 06:00:00",yesterday+" 08:59:59"]
 time_list.append(tmp_time_list)
-tmp_time_list=[yesterday+" 12:00:00",yesterday+" 15:59:59"]
+tmp_time_list=[yesterday+" 09:00:00",yesterday+" 11:59:59"]
 time_list.append(tmp_time_list)
-tmp_time_list=[yesterday+" 16:00:00",yesterday+" 19:59:59"]
+tmp_time_list=[yesterday+" 12:00:00",yesterday+" 14:59:59"]
 time_list.append(tmp_time_list)
-tmp_time_list=[yesterday+" 20:00:00",yesterday+" 23:59:59"]
+tmp_time_list=[yesterday+" 15:00:00",yesterday+" 17:59:59"]
 time_list.append(tmp_time_list)
+tmp_time_list=[yesterday+" 18:00:00",yesterday+" 21:59:59"]
+time_list.append(tmp_time_list)
+tmp_time_list=[yesterday+" 21:00:00",yesterday+" 23:59:59"]
+time_list.append(tmp_time_list)
+
 for tmp_list in time_list:
     start_time=tmp_list[0]
     end_time=tmp_list[1]

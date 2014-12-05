@@ -25,11 +25,19 @@ from collections import defaultdict
 import logging
 from prettytable import PrettyTable
 import json
-from config import MYSQL_URL
+from caapi.config import read_config
+
 
 mysql_url=""
 start_time=""
 end_time=""
+
+config=read_config()
+dbuser=config['database']['user']
+dbpwd=config['database']['password']
+database_name=config['database']['database_name']
+MYSQL_URL = "mysql://"+dbuser+":"+dbpwd+"@localhost:3306/cloudaccounting"    
+
 
 # getting the sample volume and sampling time of the first sample
 
