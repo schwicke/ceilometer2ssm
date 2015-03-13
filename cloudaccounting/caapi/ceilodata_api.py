@@ -864,6 +864,12 @@ def vo_wise(start_time_obj,end_time_obj, voinfo = ""):
     jsonx, reports = report_generation_vo(input_data, voinfo)
     return jsonx
 
+def vm_wise(start_time_obj,end_time_obj, vminfo = ""):
+    ceilo_data = get_ceilo_data_from_database(start_time_obj,end_time_obj, MYSQL_URL)
+    #print "Ceilo data complete"
+    jsonx = json.dumps(ceilo_data, sort_keys=True, indent=4, separators=(',', ': '))
+    return jsonx
+
 def daily_resource_data(start_time_obj,end_time_obj):
     ceilo_data = get_ceilo_data_from_database(start_time_obj,end_time_obj, MYSQL_URL)
     print "Ceilo data complete"

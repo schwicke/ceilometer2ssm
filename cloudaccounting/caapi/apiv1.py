@@ -331,6 +331,29 @@ def get_tenant_data(start_time, end_time, tenant_info):
         jsonx = json.dumps(res_data, sort_keys=True,indent=4, separators=(',', ': '))
     return jsonx
 
+def get_vm_data(start_time, end_time):
+    logging.info("Contacting the database")
+    session = db_init()
+    #db_api.create_session(mysql_url) # starts the database session
+    vmlist=[]
+    data={}
+    my_data = session.query(Daily_Resource_Record).filter(Daily_Resource_Record.date>=start_time,Daily_Resource_Record.date<=end_time).all()
+    data = [u.__dict__ for u in my_data]
+    for record in data:
+        vmuuid=record['vmuuid']
+        newrecord={}
+        newrecord[vmuuid]=record
+        newrecord[vmuuid]['date']=str(newrecord[vmuuid]['date']) 
+        newrecord[vmuuid]['created_at']=str(newrecord[vmuuid]['created_at'])
+        newrecord[vmuuid]['launched_at']=str(newrecord[vmuuid]['launched_at'])
+        newrecord[vmuuid]['terminated_at']=str(newrecord[vmuuid]['terminated_at'])
+        newrecord[vmuuid]['deleted_at']=str(newrecord[vmuuid]['deleted_at'])
+        del newrecord[vmuuid]['_sa_instance_state']        
+        vmlist.append(newrecord)
+    jsonx = {}
+    jsonx = json.dumps(vmlist, sort_keys=True,indent=4, separators=(',', ': '))
+    return jsonx
+
 def daily_resource_tenant_wise(start_time_obj,end_time_obj, tenantinfo = ""):
     jsonx = {}
     jsonx = json.dumps(jsonx)
@@ -344,10 +367,18 @@ def daily_resource_vo_wise(start_time_obj,end_time_obj, voinfo = ""):
     jsonx = get_vo_data(start_time_obj,end_time_obj, voinfo)
     return jsonx
 
-'''starttime = "2014-05-14 00:00:00"
-endtime = "2014-06-11 23:59:59"
+def daily_resource_vm_wise(start_time_obj,end_time_obj, vminfo = ""):
+    jsonx = {}
+    jsonx = json.dumps(jsonx)
+    #mysql_url = connect_db() 
+    jsonx = get_vm_data(start_time_obj,end_time_obj)
+    return jsonx
 
-start_time_obj = datetime.strptime(starttime, "%Y-%m-%d %H:%M:%S")
-end_time_obj = datetime.strptime(endtime, "%Y-%m-%d %H:%M:%S")
+#starttime = "2014-11-11 00:00:00"
+#endtime = "2014-11-11 23:59:59"
+#
+#start_time_obj = datetime.strptime(starttime, "%Y-%m-%d %H:%M:%S")
+#end_time_obj = datetime.strptime(endtime, "%Y-%m-%d %H:%M:%S")
+#
+#print daily_resource_vm_wise(start_time_obj, end_time_obj)
 
-print daily_resource_vo_wise(start_time_obj, end_time_obj)'''

@@ -5,7 +5,7 @@
 %endif
 Summary: OpenStack Ceilometer to SSM2 interface
 Name: ceilometer2ssm
-Version: 0.3.8
+Version: 0.3.9
 Release: 1%{?dist}
 License: ASL 2.0
 Vendor: CERN, ASGC
@@ -63,6 +63,9 @@ rm -rf $RPM_BUILD_ROOT
 %dir /var/log/ceilodata
 
 %changelog
+
+* Fri Mar 13 2015 Ulrich Schwickerath <Ulrich.Schwickerath@cern.ch> -0.3.8-1
+- add /v1.0/vm
 
 * Fri Dec 5 2014 Ulrich Schwickerath <Ulrich.Schwickerath@cern.ch> -0.3.7-1
 - reduce time slices to address ceilometer scale issues

@@ -170,7 +170,7 @@ def receive_data(verbose,debug,keystone_response,tokenid,start,end,meter):
                             print >> sys.stderr, "Failed to query ceilometer server at " + ceilometers
                             sys.exit(1)
                     except:
-                        print >> sys.stderr, "failed to create the connection object"
+                        print >> sys.stderr, "failed to create the connection object for " + ceilometer_server + " at uri: " + uri
 
 aparser = argparse.ArgumentParser(description='Poll the ceilometer database and get the sample values')
 aparser.add_argument('-v', '--verbose', dest='verbose', action='store_true', help='be verbose',default=False)
