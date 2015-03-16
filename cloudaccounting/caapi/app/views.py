@@ -30,6 +30,22 @@ def index():
                         "request_data_format": '{"startdate":"yyyy-mm-dd","enddate":"yyyy-mm-dd"}',
                         "methods" : "POST"
                        }
+    str['v1.0/vm/tenant/<tenant_id>'] = {"Help": "It provides cloud accounting information for all VMs within start and end date in <tenantid>",
+                        "request_data_format": '{"startdate":"yyyy-mm-dd","enddate":"yyyy-mm-dd"}',
+                        "methods" : "POST"
+                       }
+    str['v1.0/vm/vo/<vo_name>'] = {"Help": "It provides cloud accounting information for all VMs within start and end date for <voname>",
+                        "request_data_format": '{"startdate":"yyyy-mm-dd","enddate":"yyyy-mm-dd"}',
+                        "methods" : "POST"
+                       }
+    str['v1.0/vm/tenant'] = {"Help": "It provides cloud accounting information for all VMs within start and end date by tenantid",
+                        "request_data_format": '{"startdate":"yyyy-mm-dd","enddate":"yyyy-mm-dd"}',
+                        "methods" : "POST"
+                       }
+    str['v1.0/vm/vo'] = {"Help": "It provides cloud accounting information for all VMs within start and end date by vo",
+                        "request_data_format": '{"startdate":"yyyy-mm-dd","enddate":"yyyy-mm-dd"}',
+                        "methods" : "POST"
+                       }
     str = json.dumps(str, sort_keys=True,indent=4, separators=(',', ': '))
     return str
 
@@ -101,6 +117,62 @@ def resource_vm_wise():
     except ValueError:
         return make_response(json.dumps( { 'error': 'Invalid date format, should be "YYYY-MM-DD"' } ), 404)
     result = apiv1.daily_resource_vm_wise(start_time_obj,end_time_obj)
+    return result
+
+@app.route('/v1.0/vm/tenant/<tenant_id>', methods = ['GET','POST'])
+def resource_vm_tenant_wise_by_tenant(tenant_id):
+    if not request.json or not 'startdate' in request.json or not 'enddate' in request.json:
+        abort(400)
+    starttime = str(request.json['startdate']) + " 00:00:00"
+    endtime = str(request.json['enddate']) + " 23:59:59"
+    try:
+        start_time_obj = datetime.strptime(starttime, "%Y-%m-%d %H:%M:%S")
+        end_time_obj = datetime.strptime(endtime, "%Y-%m-%d %H:%M:%S")
+    except ValueError:
+        return make_response(json.dumps( { 'error': 'Invalid date format, should be "YYYY-MM-DD"' } ), 404)
+    result = apiv1.daily_resource_vm_wise_by_tenant(start_time_obj,end_time_obj,tenant_id)
+    return result
+
+@app.route('/v1.0/vm/vo/<vo_name>', methods = ['GET','POST'])
+def resource_vm_vo_wise_by_vo(vo_name):
+    if not request.json or not 'startdate' in request.json or not 'enddate' in request.json:
+        abort(400)
+    starttime = str(request.json['startdate']) + " 00:00:00"
+    endtime = str(request.json['enddate']) + " 23:59:59"
+    try:
+        start_time_obj = datetime.strptime(starttime, "%Y-%m-%d %H:%M:%S")
+        end_time_obj = datetime.strptime(endtime, "%Y-%m-%d %H:%M:%S")
+    except ValueError:
+        return make_response(json.dumps( { 'error': 'Invalid date format, should be "YYYY-MM-DD"' } ), 404)
+    result = apiv1.daily_resource_vm_wise_by_vo(start_time_obj,end_time_obj,vo_name)
+    return result
+
+@app.route('/v1.0/vm/tenant', methods = ['GET','POST'])
+def resource_vm_tenant_wise():
+    if not request.json or not 'startdate' in request.json or not 'enddate' in request.json:
+        abort(400)
+    starttime = str(request.json['startdate']) + " 00:00:00"
+    endtime = str(request.json['enddate']) + " 23:59:59"
+    try:
+        start_time_obj = datetime.strptime(starttime, "%Y-%m-%d %H:%M:%S")
+        end_time_obj = datetime.strptime(endtime, "%Y-%m-%d %H:%M:%S")
+    except ValueError:
+        return make_response(json.dumps( { 'error': 'Invalid date format, should be "YYYY-MM-DD"' } ), 404)
+    result = apiv1.daily_resource_vm_wise_by_tenant(start_time_obj,end_time_obj)
+    return result
+
+@app.route('/v1.0/vm/vo', methods = ['GET','POST'])
+def resource_vm_vo_wise():
+    if not request.json or not 'startdate' in request.json or not 'enddate' in request.json:
+        abort(400)
+    starttime = str(request.json['startdate']) + " 00:00:00"
+    endtime = str(request.json['enddate']) + " 23:59:59"
+    try:
+        start_time_obj = datetime.strptime(starttime, "%Y-%m-%d %H:%M:%S")
+        end_time_obj = datetime.strptime(endtime, "%Y-%m-%d %H:%M:%S")
+    except ValueError:
+        return make_response(json.dumps( { 'error': 'Invalid date format, should be "YYYY-MM-DD"' } ), 404)
+    result = apiv1.daily_resource_vm_wise_by_vo(start_time_obj,end_time_obj)
     return result
 
 @app.errorhandler(404)

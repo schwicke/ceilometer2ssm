@@ -25,6 +25,12 @@ ai6:	clean
 	rpmbuild --define "dist .ai6"  -ts  $(PKGNAME).tar.gz 
 	rm -f $(RPMSOURCES)/$(PKGNAME).tar.gz 
 
+el6:	clean
+	./autogen.sh
+	make -f Makefile.koji
+	rpmbuild --define "dist .el6"  -ts  $(PKGNAME).tar.gz 
+	rm -f $(RPMSOURCES)/$(PKGNAME).tar.gz 
+
 sources: srpm
 
 proper: clean distclean

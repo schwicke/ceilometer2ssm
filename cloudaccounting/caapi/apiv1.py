@@ -348,10 +348,106 @@ def get_vm_data(start_time, end_time):
         newrecord[vmuuid]['launched_at']=str(newrecord[vmuuid]['launched_at'])
         newrecord[vmuuid]['terminated_at']=str(newrecord[vmuuid]['terminated_at'])
         newrecord[vmuuid]['deleted_at']=str(newrecord[vmuuid]['deleted_at'])
-        del newrecord[vmuuid]['_sa_instance_state']        
+        try:
+            del newrecord[vmuuid]['_sa_instance_state']
+        except:
+            pass
         vmlist.append(newrecord)
     jsonx = {}
     jsonx = json.dumps(vmlist, sort_keys=True,indent=4, separators=(',', ': '))
+    return jsonx
+
+def get_vm_data_by_tenant(start_time, end_time, tenant_info):
+    logging.info("Contacting the database")
+    session = db_init()
+    vmlist={}
+    data={}
+    tenants = session.query(distinct(Daily_Resource_Record.tenant_id)).filter(Daily_Resource_Record.date>=start_time,Daily_Resource_Record.date<=end_time).all()
+    data = {}
+    for tenant in tenants:
+        tenantid = tenant[0]
+        try:
+            vmlist[tenantid]
+        except KeyError:
+            vmlist[tenantid] = []
+        my_query = session.query(Daily_Resource_Record).filter(Daily_Resource_Record.date>=start_time,Daily_Resource_Record.date<=end_time,Daily_Resource_Record.tenant_id==tenantid)
+        data[tenantid] = [u.__dict__ for u in my_query.all()]
+        data[tenantid] = sorted(data[tenantid], key=lambda x:x['resource_id'])        
+        for record in data[tenantid]:
+            vmuuid=record['vmuuid']
+            newrecord={}
+            newrecord[vmuuid]=record
+            newrecord[vmuuid]['date']=str(record['date'])
+            newrecord[vmuuid]['created_at']=str(record['created_at'])
+            newrecord[vmuuid]['launched_at']=str(record['launched_at'])
+            newrecord[vmuuid]['terminated_at']=str(record['terminated_at'])
+            newrecord[vmuuid]['deleted_at']=str(record['deleted_at'])
+            try:
+                del newrecord[vmuuid]['_sa_instance_state']
+            except:
+                pass
+            vmlist[tenantid].append(newrecord)
+    jsonx = {}
+    if tenant_info:
+        jsonx = json.dumps(vmlist[tenant_info], sort_keys=True,indent=4, separators=(',', ': '))
+    else:
+        jsonx = json.dumps(vmlist, sort_keys=True,indent=4, separators=(',', ': '))
+
+    return jsonx
+
+def get_vm_data_by_vo(start_time, end_time, vo_info):
+    logging.info("Contacting the database")
+    session = db_init()
+    vmlist={}
+    data={}
+    vos = session.query(distinct(Daily_Resource_Record.vo_name)).filter(Daily_Resource_Record.date>=start_time,Daily_Resource_Record.date<=end_time).all()
+    data = {}
+    for vo in vos:
+        voname = vo[0]
+        try:
+            vmlist[voname]
+        except KeyError:
+            vmlist[voname] = []
+        my_query = session.query(Daily_Resource_Record).filter(Daily_Resource_Record.date>=start_time,Daily_Resource_Record.date<=end_time,Daily_Resource_Record.vo_name==voname)
+        data[voname] = [u.__dict__ for u in my_query.all()]
+        data[voname] = sorted(data[voname], key=lambda x:x['resource_id'])
+        for record in data[voname]:
+            vmuuid=record['vmuuid']
+            newrecord={}
+            newrecord[vmuuid]=record
+            newrecord[vmuuid]['date']=str(record['date'])
+            newrecord[vmuuid]['created_at']=str(record['created_at'])
+            newrecord[vmuuid]['launched_at']=str(record['launched_at'])
+            newrecord[vmuuid]['terminated_at']=str(record['terminated_at'])
+            newrecord[vmuuid]['deleted_at']=str(record['deleted_at'])
+            try:
+                del newrecord[vmuuid]['_sa_instance_state']
+            except:
+                pass
+            vmlist[voname].append(newrecord)
+    jsonx = {}
+    if vo_info:
+        jsonx = json.dumps(vmlist[vo_info], sort_keys=True,indent=4, separators=(',', ': '))
+    else:
+        jsonx = json.dumps(vmlist, sort_keys=True,indent=4, separators=(',', ': '))
+    return jsonx
+
+def daily_resource_vm_wise(start_time_obj,end_time_obj, vminfo = ""):
+    jsonx = {}
+    jsonx = json.dumps(jsonx)
+    jsonx = get_vm_data(start_time_obj,end_time_obj)
+    return jsonx
+
+def daily_resource_vm_wise_by_tenant(start_time_obj,end_time_obj, tenantinfo = ""):
+    jsonx = {}
+    jsonx = json.dumps(jsonx)
+    jsonx = get_vm_data_by_tenant(start_time_obj,end_time_obj,tenantinfo)
+    return jsonx
+
+def daily_resource_vm_wise_by_vo(start_time_obj,end_time_obj, vminfo = ""):
+    jsonx = {}
+    jsonx = json.dumps(jsonx)
+    jsonx = get_vm_data_by_vo(start_time_obj,end_time_obj,vminfo)
     return jsonx
 
 def daily_resource_tenant_wise(start_time_obj,end_time_obj, tenantinfo = ""):
@@ -363,22 +459,15 @@ def daily_resource_tenant_wise(start_time_obj,end_time_obj, tenantinfo = ""):
 def daily_resource_vo_wise(start_time_obj,end_time_obj, voinfo = ""):
     jsonx = {}
     jsonx = json.dumps(jsonx)
-    #mysql_url = connect_db() 
     jsonx = get_vo_data(start_time_obj,end_time_obj, voinfo)
     return jsonx
 
-def daily_resource_vm_wise(start_time_obj,end_time_obj, vminfo = ""):
-    jsonx = {}
-    jsonx = json.dumps(jsonx)
-    #mysql_url = connect_db() 
-    jsonx = get_vm_data(start_time_obj,end_time_obj)
-    return jsonx
+'''
+starttime = "2014-11-11 00:00:00"
+endtime = "2014-11-11 23:59:59"
 
-#starttime = "2014-11-11 00:00:00"
-#endtime = "2014-11-11 23:59:59"
-#
-#start_time_obj = datetime.strptime(starttime, "%Y-%m-%d %H:%M:%S")
-#end_time_obj = datetime.strptime(endtime, "%Y-%m-%d %H:%M:%S")
-#
-#print daily_resource_vm_wise(start_time_obj, end_time_obj)
+start_time_obj = datetime.strptime(starttime, "%Y-%m-%d %H:%M:%S")
+end_time_obj = datetime.strptime(endtime, "%Y-%m-%d %H:%M:%S")
 
+print daily_resource_vm_wise_by_vo(start_time_obj, end_time_obj,'CMS')
+'''
