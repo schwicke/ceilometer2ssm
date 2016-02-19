@@ -17,7 +17,7 @@ setup(
     keywords = "ceilometer2ssm",
     url = "https://github.com/schwicke/ceilometer2ssm",
     packages=['cloudaccounting','caapi','caapi/app'],
-    scripts=['ceilometer2ssm','ceilodatastore','ceilodatapoll','ceilodata2ssm','ceilodata2acct','standalone/cloudaccounting'],
+    scripts=['ceilometer2ssm','ceilodatastore','ceilodatapoll','ceilodata2ssm','ceilodata2acct','populate_daily_resource_record','standalone/cloudaccounting'],
     classifiers=[
         "Development Status :: 3 - Alpha",
         "Topic :: Utilities",

@@ -26,3 +26,9 @@ def getDataFromHwDb():
         errno, errstr = error
         print  >> sys.stderr, 'An error occurred while doing the HW DB Poll: ', errstr 
         exit(1)
+
+def collect_hepspecs():
+    stdout_value = json.loads(commands.getoutput(
+        r'''meter-cli -m 13273 --start "2015-07-01 00:00:00" -n "hepspec-jmakai" --limit 10000 --json'''
+    ))
+    return stdout_value

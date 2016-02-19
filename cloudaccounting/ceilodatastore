@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/python
 
 """
 The module stores the information from ceilometer
@@ -22,8 +22,7 @@ import time
 from cloudaccounting import landbquery # queries landb datbase
 from cloudaccounting import hwdbquery  # queries hwdb database
 import argparse
-from caapi.populate_daily_resource_record import update_resource_record
-
+from caapi.populate_daily_resource_record import getHepSpecData,update_resource_record_day
 hep_spec_data_id={}# stores the serial number-hep_spec mappings
 hep_spec_data_name = {} # stores the host name-hep_spec mappings
 
@@ -45,26 +44,6 @@ def read_config():
         print >> sys.stderr, 'ERROR: Cannot open configuration file ' + filename
         exit(1)
 
-# querying the hwdb database
-# serial number hep-spec value combination data is saved
-
-def getHepSpecData():
-    hwData = hwdbquery.getDataFromHwDb()
-    decoded = json.loads(hwData)
-    hep_spec_data_id = {}
-    hep_spec_data_name = {}
-    for server in decoded["rows"]:
-        id=server['id'];
-        name = server['key']
-        values=server['value']
-        hep_spec="nil"
-        try :
-            hep_spec=values['HEP-SPEC06']
-        except KeyError:
-            pass
-        hep_spec_data_id[id]=hep_spec
-        hep_spec_data_name[name]=hep_spec
-    return hep_spec_data_id,hep_spec_data_name
 
 # storing the resource data in the database
 def store_sorted_resource_data(sorted_resource_data,start_time,end_time,lgr):
@@ -595,13 +574,12 @@ yesterday=str(yesterday)
 today=str(today)
 aparser = argparse.ArgumentParser(description='Wrapper for ceilodatapoll')
 aparser.add_argument('-d', '--debug', dest='debug', action='store_true', help='Produce debugging output',default=False)
-aparser.add_argument('-t', '--day', dest='yesterday', action='store',help='Day to process. Must be in the past. Format: yyyy-mm-dd',default=yesterday)
+aparser.add_argument('-t', '--time', dest='yesterday', action='store',help='Day to process. Must be in the past. Format: yyyy-mm-dd',default=yesterday)
 args = aparser.parse_args()
 yesterday=args.yesterday
 debug = args.debug
-
+debug = True
 hep_spec_data_id,hep_spec_data_name=getHepSpecData()
-
 config = read_config()
 mysql_url=""
 
@@ -611,7 +589,6 @@ mysql_url=""
     CRITICAL - 50, ERROR - 40, WARNING - 30, INFO - 20,
     DEBUG - 10, NOTSET - 0
 """
-
 start_time = None
 end_time = None
 try:
@@ -624,7 +601,7 @@ try:
 except:
     print >> sys.stderr, "ERROR: No secrets defined in the configuration file"
 
-
+print "got landb secrets"
 try:
     database_info=config["database"]
     try:
@@ -660,7 +637,6 @@ fh.setLevel(log_level)
 frmt = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 fh.setFormatter(frmt)
 lgr.addHandler(fh)
-
 # Calculate the Time Period to poll the ceilometer
 lgr.debug('The ceilometer Polling will start')
 
@@ -673,22 +649,7 @@ req_attributes = ["user_id", "project_id", "resource_id", "node","name",
 
 # The Accounting Logic starts from here
 
-
-
-#print yesterday
 time_list=[]
-#tmp_time_list=[yesterday+" 00:00:00",yesterday+" 03:59:59"]
-#time_list.append(tmp_time_list)
-#tmp_time_list=[yesterday+" 04:00:00",yesterday+" 07:59:59"]
-#time_list.append(tmp_time_list)
-#tmp_time_list=[yesterday+" 08:00:00",yesterday+" 11:59:59"]
-#time_list.append(tmp_time_list)
-#tmp_time_list=[yesterday+" 12:00:00",yesterday+" 15:59:59"]
-#time_list.append(tmp_time_list)
-#tmp_time_list=[yesterday+" 16:00:00",yesterday+" 19:59:59"]
-#time_list.append(tmp_time_list)
-#tmp_time_list=[yesterday+" 20:00:00",yesterday+" 23:59:59"]
-#time_list.append(tmp_time_list)
 # 3h slots only now ! 
 tmp_time_list=[yesterday+" 00:00:00",yesterday+" 02:59:59"]
 time_list.append(tmp_time_list)
@@ -711,7 +672,6 @@ for tmp_list in time_list:
     start_time=tmp_list[0]
     end_time=tmp_list[1]
     lgr.debug('Start Time: %s and End Time: %s', start_time, end_time)
-
     # Call the ceilodatapoll script and get the samples in json format
     p = subprocess.Popen([ceilodatapoll, '-c', ceilometerconf, '-s',
                                    str(start_time), '-e', str(end_time)],
@@ -813,6 +773,6 @@ for tmp_list in time_list:
     lgr.debug('Done with database update')
 
 #Now update daily_resouce_record table from metric_data table
-lgr.debug('Update daily_resouce_record starts')
-update_resource_record()
-lgr.debug('Update daily_resouce_record ends')
+lgr.debug('Update daily_resource_record starts')
+update_resource_record(1)
+lgr.debug('Update daily_resource_record ends')

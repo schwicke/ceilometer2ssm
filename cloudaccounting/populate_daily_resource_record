@@ -1,0 +1,13 @@
+#!/usr/bin/python
+from datetime import date, datetime, timedelta
+from optparse import OptionParser
+from caapi.populate_daily_resource_record import init_populate_daily_resource_record,update_resource_record_day
+init_populate_daily_resource_record()
+
+# Parse command line options
+optparser = OptionParser(usage="usage: %prog [options] date", version="%prog 0.1")
+help = "user/passwd-formatted configuration manager DB connection file path"
+optparser.add_option("-d", "--date", action="store", help="fill daily table for a specific day", dest="date", default=str(date.today()))
+(options, args) = optparser.parse_args()
+if options.date:
+    update_resource_record_day(datetime.strptime(options.date,"%Y-%m-%d"))
