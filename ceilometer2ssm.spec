@@ -5,7 +5,7 @@
 %endif
 Summary: OpenStack Ceilometer to SSM2 interface
 Name: ceilometer2ssm
-Version: 0.5.0
+Version: 0.5.1
 Release: 1%{?dist}
 License: ASL 2.0
 Vendor: CERN, ASGC
