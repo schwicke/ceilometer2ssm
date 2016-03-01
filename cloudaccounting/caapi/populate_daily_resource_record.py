@@ -52,30 +52,35 @@ def init_populate_daily_resource_record():
 # serial number hep-spec value combination data is saved
 
 def collect_hepspecs():
-    stdout_value = json.loads(commands.getoutput(
-        r'''meter-cli -m 13273 --start "2015-07-01 00:00:00" -n "hepspec-jmakai" --limit 10000 --json'''
-    ))
-    return stdout_value
-
+    try:
+        stdout_value = json.loads(commands.getoutput(
+                r'''meter-cli -m 13273 --start "2015-07-01 00:00:00" -n "hepspec-jmakai" --limit 10000 --json'''
+                ))
+        return stdout_value
+    except:
+        return {}
 
 def getHepSpecData():
     hep_spec_data_id = {}
     hep_spec_data_host_name = {}
-    decoded = collect_hepspecs()
-    for server in decoded["13273"]:
-        host_name = server['results']['hostname'];
-        host_hs06 = server['results']['hepspec'];
+    try:
+        decoded = collect_hepspecs()
+        for server in decoded["13273"]:
+            host_name = server['results']['hostname'];
+            host_hs06 = server['results']['hepspec'];
 
-        hep_spec_data_host_name[host_name] = {}       
-        hep_spec_data_host_name[host_name]["host_hs06"] = host_hs06
-        hep_spec_data_host_name[host_name]["host_lcores"] = 0
-        hep_spec_data_host_name[host_name]["host_pcores"] = 0
+            hep_spec_data_host_name[host_name] = {}       
+            hep_spec_data_host_name[host_name]["host_hs06"] = host_hs06
+            hep_spec_data_host_name[host_name]["host_lcores"] = 0
+            hep_spec_data_host_name[host_name]["host_pcores"] = 0
 
-        hep_spec_data_id[id]= {}
-        hep_spec_data_id[id]["host_name"] = host_name
-        hep_spec_data_id[id]["host_hs06"] = host_hs06
-        hep_spec_data_id[id]["host_lcores"] = 0
-        hep_spec_data_id[id]["host_pcores"] = 0
+            hep_spec_data_id[id]= {}
+            hep_spec_data_id[id]["host_name"] = host_name
+            hep_spec_data_id[id]["host_hs06"] = host_hs06
+            hep_spec_data_id[id]["host_lcores"] = 0
+            hep_spec_data_id[id]["host_pcores"] = 0
+    except:
+        pass
     return hep_spec_data_id, hep_spec_data_host_name
 
  

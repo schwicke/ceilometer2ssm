@@ -22,7 +22,7 @@ import time
 from cloudaccounting import landbquery # queries landb datbase
 from cloudaccounting import hwdbquery  # queries hwdb database
 import argparse
-from caapi.populate_daily_resource_record import getHepSpecData,update_resource_record_day
+from caapi.populate_daily_resource_record import getHepSpecData,update_resource_record_day,update_resource_record
 hep_spec_data_id={}# stores the serial number-hep_spec mappings
 hep_spec_data_name = {} # stores the host name-hep_spec mappings
 
@@ -601,7 +601,6 @@ try:
 except:
     print >> sys.stderr, "ERROR: No secrets defined in the configuration file"
 
-print "got landb secrets"
 try:
     database_info=config["database"]
     try:
