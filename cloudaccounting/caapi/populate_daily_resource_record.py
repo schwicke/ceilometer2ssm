@@ -44,7 +44,7 @@ def init_populate_daily_resource_record():
     engine = create_engine(mysql_url)
     Base.metadata.bind = engine
     DBSession = sessionmaker(bind=engine)
-    session = DBSession()
+    return DBSession()
     
 
 
@@ -85,21 +85,21 @@ def getHepSpecData():
 
  
 # Insert a Person in the person table
-def update_resource_record(delta):
+def update_resource_record(delta,session):
     #print hep_spec_data_host_name_wise
     today=date.today() - timedelta(delta)
     starttime = today.strftime("%Y-%m-%d") + " 00:00:00"
     endtime = today.strftime("%Y-%m-%d") + " 23:59:59"
-    update_resource_record_startend(today,starttime,endtime)
+    update_resource_record_startend(today,starttime,endtime,session)
 
-def update_resource_record_day(day):
+def update_resource_record_day(day,session):
     #print hep_spec_data_host_name_wise
     today=day
     starttime = day.strftime("%Y-%m-%d") + " 00:00:00"
     endtime = day.strftime("%Y-%m-%d") + " 23:59:59"
-    update_resource_record_startend(today,starttime,endtime)
+    update_resource_record_startend(today,starttime,endtime,session)
 
-def update_resource_record_startend(today,starttime,endtime):
+def update_resource_record_startend(today,starttime,endtime,session):
     hep_spec_data_id_wise,hep_spec_data_host_name_wise = getHepSpecData()
     #print hep_spec_data_host_name_wise
     print starttime 

@@ -6,7 +6,7 @@
 Summary: OpenStack Ceilometer to SSM2 interface
 Name: ceilometer2ssm
 Version: 0.5.1
-Release: 2%{?dist}
+Release: 3%{?dist}
 License: ASL 2.0
 Vendor: CERN, ASGC
 Group: Applications/Internet
@@ -63,6 +63,9 @@ rm -rf $RPM_BUILD_ROOT
 %dir /var/log/ceilodata
 
 %changelog
+* Mon Mar 7 2016 Ulrich Schwickerath <Ulrich.Schwickerath@cern.ch> -0.5.1-3
+- init populate_daily_resource_record correctly
+
 * Thu Feb 16 2016 Ulrich Schwickerath <Ulrich.Schwickerath@cern.ch> -0.5.1-2
 - get hs06 from meter
 - package populate_daily_resource_record executable

@@ -773,5 +773,6 @@ for tmp_list in time_list:
 
 #Now update daily_resouce_record table from metric_data table
 lgr.debug('Update daily_resource_record starts')
-update_resource_record(1)
+session=init_populate_daily_resource_record()
+update_resource_record(1,session)
 lgr.debug('Update daily_resource_record ends')
